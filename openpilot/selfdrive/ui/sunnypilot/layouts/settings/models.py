@@ -17,7 +17,7 @@ from openpilot.selfdrive.ui.ui_state import device, ui_state
 from openpilot.selfdrive.ui.sunnypilot.accelerator_link import (link_enabled, link_toggle_meaningful,
                                                                 selected_accelerator_model, set_link_enabled)
 from openpilot.selfdrive.ui.sunnypilot.model_info import (big_model_state, bundles_for_source, carrying_model, default_model_name,
-                                                           model_cache_size_mb, queued_name)
+                                                           model_cache_size_mb, queued_name, refresh_in_progress, refresh_model_list)
 from openpilot.system.ui.lib.multilang import tr
 from openpilot.system.ui.lib.application import gui_app
 from openpilot.system.ui.widgets import DialogResult, Widget
@@ -46,6 +46,8 @@ class ModelsLayout(Widget):
     self._downloading = False
     self._verifying = False
     self._clearing = False
+    self._refreshing = False
+    self._refresh_start: float | None = None
     self._last_note = None
     self.last_cache_calc_time = 0
 
@@ -87,10 +89,9 @@ class ModelsLayout(Widget):
 
     self.download_item = download_status_item(lambda: tr("Download") if self._downloading else tr("Model Status"))
 
-    self.refresh_item = button_item(tr("Refresh Model List"), tr("REFRESH"), "",
-                                    lambda: (ui_state.params.put("ModelManager_LastSyncTime", 0),
-                                             ui_state.params.put("ModelManager_LastSyncTime_Chestnut", 0),
-                                             gui_app.push_widget(alert_dialog(tr("Fetching Latest Models")))))
+    self.refresh_item = button_item(tr("Refresh Model List"),
+                                    lambda: tr("FETCHING...") if self._refreshing else tr("REFRESH"), "",
+                                    self._refresh_models)
 
     self.clear_cache_item = ListItemSP(
       title=tr("Clear Model Cache"),
@@ -187,6 +188,10 @@ class ModelsLayout(Widget):
     dialog = ConfirmDialog(tr("This will delete ALL downloaded models from the cache except the currently active model. Are you sure?"),
                            tr("Clear Cache"), callback=_callback)
     gui_app.push_widget(dialog)
+
+  def _refresh_models(self):
+    refresh_model_list()
+    self._refresh_start = time.monotonic()
 
   def _handle_bundle_download_progress(self):
     self.cancel_download_item.set_visible(False)
@@ -411,6 +416,10 @@ class ModelsLayout(Widget):
 
     # manager is offroad-only, so an onroad clear would never be serviced
     self.clear_cache_item.action_item.set_enabled(offroad and not self._downloading and not self._clearing)
+
+    # manager is offroad-only, so a refresh queued onroad would never be serviced
+    self._refreshing = refresh_in_progress(self._refresh_start)
+    self.refresh_item.action_item.set_enabled(offroad and not self._downloading and not self._refreshing)
 
   def _render(self, rect):
     self._scroller.render(rect)
