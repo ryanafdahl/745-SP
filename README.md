@@ -1,74 +1,102 @@
-![](https://user-images.githubusercontent.com/47793918/233812617-beab2e71-57b9-479e-8bff-c3931347ca40.png)
+# 745-SP
 
-## 🌞 What is sunnypilot?
-[sunnypilot](https://github.com/sunnyhaibin/sunnypilot) is a fork of comma.ai's openpilot, an open source driver assistance system. sunnypilot offers the user a unique driving experience for over 300+ supported car makes and models with modified behaviors of driving assist engagements. sunnypilot complies with comma.ai's safety rules as accurately as possible.
+745-SP is a personal, experimental build of [sunnypilot](https://github.com/sunnypilot/sunnypilot) for a **comma 4** paired with an **NVIDIA Jetson Orin Nano Super**. It includes sunnypilot pull request [#2001](https://github.com/sunnypilot/sunnypilot/pull/2001), which adds the Jetlink accelerator integration.
 
-## 💭 Join our Community Forum
-Join the official sunnypilot community forum to stay up to date with all the latest features and be a part of shaping the future of sunnypilot!
-* https://community.sunnypilot.ai/
+**This is a custom build for my car. Do not use this.**
 
-## Documentation
-https://docs.sunnypilot.ai/ is your one stop shop for everything from features to installation to FAQ about the sunnypilot
+## What this build does
 
-## 🚘 Running on a dedicated device in a car
-First, check out this list of items you'll need to [get started](https://community.sunnypilot.ai/t/getting-started-using-sunnypilot-in-your-supported-car/251).
+The comma remains responsible for the safety- and vehicle-facing work: cameras, image warp, model-output parsing, vehicle interface, driver monitoring, and CAN communication. The Jetson has no CAN access; it runs the selected large driving model with TensorRT and returns model outputs to the comma over USB.
 
-## Installation
-Next, refer to the sunnypilot community forum for [installation instructions](https://community.sunnypilot.ai/t/read-before-installing-sunnypilot/254), as well as a complete list of [Recommended Branch Installations](https://community.sunnypilot.ai/t/recommended-branch-installations/235).
+```text
+comma 4                                                     Jetson Orin Nano Super
+cameras -> local image warp -> USB 3 -> model history -> TensorRT inference
+vehicle controls <- model parser <- USB 3 <- model outputs
+```
 
-## 🎆 Pull Requests
-We welcome both pull requests and issues on GitHub. Bug fixes are encouraged.
+The built-in small model starts first. If the Jetson is still booting, the comma continues with that model and joins the large Jetlink model after the USB link and cached TensorRT engine are ready. If the link is lost, the system falls back to the local model and retries the connection. A loss while engaged is a soft-disable condition.
 
-Pull requests should be against the most current `master` branch.
+## Included configuration
 
-## 📊 User Data
+- sunnypilot master snapshot with Jetlink support from PR #2001
+- Jetlink server pinned as the `jetlink_repo` submodule
+- USB FunctionFS transport: **Jetson USB-A -> comma USB-C**
+- Accelerator Link control in **Settings -> Models**, visible before the Jetson is detected
+- Large-model selection, download/provisioning progress, cached-engine validation, telemetry, reconnect, and native-model fallback
+- The default available Jetlink model is **Cinque Terre**. Its ONNX object is fetched only when it is needed; it is intentionally not included in the normal comma install.
 
-By default, sunnypilot uploads the driving data to comma servers. You can also access your data through [comma connect](https://connect.comma.ai/).
+The model ONNX is about **766 MB**. The TensorRT engine is stored separately on the Jetson and is of similar size, so leave several GB free for the container, model, engine cache, and updates.
 
-sunnypilot is open source software. The user is free to disable data collection if they wish to do so.
+## Hardware and software requirements
 
-sunnypilot logs the road-facing camera, CAN, GPS, IMU, magnetometer, thermal sensors, crashes, and operating system logs.
-The driver-facing camera and microphone are only logged if you explicitly opt-in in settings.
+| Component | Expected setup |
+| --- | --- |
+| Driving device | comma 4 |
+| Accelerator | Jetson Orin Nano Super, 8 GB |
+| Jetson software | JetPack 6.1 / L4T r36.4, TensorRT 10.3, Docker with NVIDIA runtime |
+| Data link | USB 3 Type-A to Type-C **data** cable; Jetson is the USB host |
+| Jetson power | Separate regulated supply sized for the 25 W Jetson power mode |
+| Storage | Several GB free under `/mnt/data/jetlink` |
 
-By using this software, you understand that use of this software or its related services will generate certain types of user data, which may be logged and stored at the sole discretion of comma. By accepting this agreement, you grant an irrevocable, perpetual, worldwide right to comma for the use of this data.
+Use the Jetson's USB-A host port. The Orin Nano devkit USB-C port is not the Jetlink data connection. Keep the Jetson at its configured **25 W** mode and ensure its cooling path is clear.
 
-## Licensing
+## Install on the comma
 
-sunnypilot is released under the [MIT License](LICENSE). This repository includes original work as well as significant portions of code derived from [openpilot by comma.ai](https://github.com/commaai/openpilot), which is also released under the MIT license with additional disclaimers.
+1. Factory-reset the comma if replacing an existing custom build. Connect it to stable Wi-Fi or Ethernet and leave it powered through installation and the first boot.
+2. On the comma, open **Custom Software** and enter:
 
-The original openpilot license notice, including comma.ai’s indemnification and alpha software disclaimer, is reproduced below as required:
+   ```text
+   installer.comma.ai/ryanafdahl/745-SP
+   ```
 
-> openpilot is released under the MIT license. Some parts of the software are released under other licenses as specified.
->
-> Any user of this software shall indemnify and hold harmless Comma.ai, Inc. and its directors, officers, employees, agents, stockholders, affiliates, subcontractors and customers from and against all allegations, claims, actions, suits, demands, damages, liabilities, obligations, losses, settlements, judgments, costs and expenses (including without limitation attorneys’ fees and costs) which arise out of, relate to or result from any use of this software by user.
->
-> **THIS IS ALPHA QUALITY SOFTWARE FOR RESEARCH PURPOSES ONLY. THIS IS NOT A PRODUCT.
-> YOU ARE RESPONSIBLE FOR COMPLYING WITH LOCAL LAWS AND REGULATIONS.
-> NO WARRANTY EXPRESSED OR IMPLIED.**
+3. Let the installer finish. The first boot can take longer while system packages, prebuilt assets, and the local model initialize. Do not interrupt power during that work.
+4. Complete normal comma setup and calibration before testing the accelerator. Confirm the vehicle is recognized and that native driving functions correctly with the Jetson disconnected.
+5. While parked, open **Settings -> Models** and turn on **Accelerator Link**. The toggle is intentionally available even before USB detection.
 
-For full license terms, please see the [`LICENSE`](LICENSE) file.
+The short form `ryanafdahl/745-SP` may also be accepted by the Custom Software screen; the full URL above is the unambiguous installer address.
 
-## 💰 Support sunnypilot
-If you find any of the features useful, consider becoming a [sponsor on GitHub](https://github.com/sponsors/sunnyhaibin) to support future feature development and improvements.
+## Set up and pair the Jetson
 
+Use the Jetlink revision pinned by this repository for both the comma integration and Jetson server. The upstream Jetlink [setup guide](https://github.com/zoompilot/jetlink/tree/1f0767fd3368c2894929f96e4f934b8824fc2500) contains the server, transport, cache, and service commands.
 
-By becoming a sponsor, you will gain access to exclusive content, early access to new features, and the opportunity to directly influence the project's development.
+1. Set up the Jetson while parked, with stable internet, cooling, storage, and its 25 W power supply.
+2. Build and run the Jetlink server with USB transport. Keep it running while bringing up the comma link.
+3. Connect **Jetson USB-A -> comma USB-C** with a USB 3 data cable.
+4. On the comma, enable **Accelerator Link**, choose a large model, and stay offroad until download and engine preparation complete.
+5. Wait for the engine to be cached on the Jetson. A first engine build normally takes a few minutes; subsequent starts reuse the cached engine.
 
+Do not update one side of the pair independently. Updating, reflashing, changing TensorRT, changing GPU architecture, or selecting a different model can require a matching engine rebuild.
 
-<h3>GitHub Sponsor</h3>
+## Verify before a road test
 
-<a href="https://github.com/sponsors/sunnyhaibin">
-  <img src="https://user-images.githubusercontent.com/47793918/244135584-9800acbd-69fd-4b2b-bec9-e5fa2d85c817.png" alt="Become a Sponsor" width="300" style="max-width: 100%; height: auto;">
-</a>
-<br>
+The GPU icon is only a quick status signal. A green icon means the connected accelerator is reporting ready; a flashing icon can mean the server is booting, the model is downloading, or an engine is being prepared.
 
-<h3>PayPal</h3>
+Before driving, verify all of the following while parked:
 
-<a href="https://paypal.me/sunnyhaibin0850" target="_blank">
-<img src="https://www.paypalobjects.com/en_US/i/btn/btn_donateCC_LG.gif" alt="PayPal this" title="PayPal - The safer, easier way to pay online!" border="0" />
-</a>
-<br></br>
+- The Jetlink server is running on the Jetson: `sudo systemctl status jetlink-server`
+- The comma sees the USB gadget after the Jetson powers up
+- The selected engine is ready and the GPU icon becomes green
+- Jetson telemetry reports temperature, power, GPU activity, and inference timing
+- The comma can fall back to its native model if the Jetson is disconnected
 
-Your continuous love and support are greatly appreciated! Enjoy 🥰
+For a diagnostic drive, keep the first route short and retain logs from both devices. `modelV2.big=true`, live Jetlink telemetry, and no frame drops or reconnect/fallback events are stronger evidence than the icon alone.
 
-<span>-</span> Jason, Founder of sunnypilot
+## Honda Clarity and modified EPS note
+
+Vehicle support and any modified-EPS behavior depend on the exact fingerprint and EPS firmware seen by the comma. This repository does not make a torque modification itself and does not prove that a particular modified EPS is safe or supported. Validate the normal, stock vehicle interface first; treat modified-EPS testing as a separate, supervised validation effort.
+
+## Troubleshooting
+
+| Symptom | First checks |
+| --- | --- |
+| No USB icon | Confirm the USB-A-to-USB-C data path, Jetson power, and that Accelerator Link is enabled. |
+| Flashing GPU icon | Allow Jetson boot, model transfer, and TensorRT engine preparation to finish; inspect `journalctl -u jetlink-server -b`. |
+| Green icon never appears | Confirm both ends use the paired Jetlink revision, the server is running, and the selected model has a cached engine. |
+| GPU connects then drops | Check cable seating, USB SuperSpeed negotiation, Jetson supply voltage, cooling, and Jetlink logs on both devices. |
+| Model build fails | Check free space under `/mnt/data/jetlink`, JetPack/TensorRT compatibility, and the server log. |
+
+Raw driving logs can contain location, video, CAN, and device data. Keep them private unless they have been deliberately sanitized.
+
+## Sources and licenses
+
+745-SP is based on [sunnypilot](https://github.com/sunnypilot/sunnypilot), [comma.ai openpilot](https://github.com/commaai/openpilot), and [Zoompilot Jetlink](https://github.com/zoompilot/jetlink). See [LICENSE](LICENSE) and [LICENSE.md](LICENSE.md) for license notices and disclaimers.
