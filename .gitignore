@@ -105,3 +105,6 @@ SKILL.md
 !.idea/customTargets.xml
 !.idea/tools/*
 !.run/*
+
+# private device captures (routes, journals, hardware identifiers)
+diagnostics/
