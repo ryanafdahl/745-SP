@@ -14,7 +14,8 @@ def prepare_reset(model):
   zero history as modeld startup. Nothing is allocated or compiled on the
   failure frame.
   """
-  queues = tuple(model.input_queues[k] for k in ('img_q', 'big_img_q', 'feat_q', 'desire_q'))
+  queues = tuple(q for q in model.input_queues.values() if q.device != 'NPY')
+  npy = model.numpy_inputs if hasattr(model, 'numpy_inputs') else model.npy
 
   @TinyJit
   def clear():
@@ -26,7 +27,7 @@ def prepare_reset(model):
   def reset():
     clear()
     model.prev_desire.fill(0)
-    model.npy['prev_feat'].fill(0)
-    model.npy['desire'].fill(0)
+    for array in npy.values():
+      array.fill(0)
 
   return reset

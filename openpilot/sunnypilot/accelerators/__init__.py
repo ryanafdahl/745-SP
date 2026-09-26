@@ -42,6 +42,11 @@ class Daemon(NamedTuple):
   should_run: Callable[..., bool]
 
 
+def enabled() -> bool:
+  """Is Accelerator Link enabled in settings?"""
+  return backend.enabled()
+
+
 def present() -> bool:
   """Is a Jetson attached, or asleep and known to be there? USB-independent."""
   return backend.present()
@@ -73,7 +78,7 @@ def make_status_publisher(pm, model):
 
 
 def uses_stock_runner() -> bool:
-  """Should manager run stock modeld regardless of the stored bundle?
+  """Should manager run stock modeld because no small bundle is selected?
 
   Configuration only, never link state or ready(): a Jetson that boots late
   must not move manager between modelds mid-drive.

@@ -17,6 +17,7 @@ from openpilot.common.hardware.hw import Paths
 
 from openpilot.cereal import messaging, custom
 from openpilot.sunnypilot.models.fetcher import ModelFetcher
+from openpilot.sunnypilot.models.initial_model import INITIAL_SMALL_MODEL_REF, P_INITIALIZED
 from openpilot.sunnypilot.models.helpers import (ACTIVE_BUNDLE_KEYS, get_active_bundle, get_selected_bundle,
                                                   resolve_bundle_by_ref, validate_active_bundles, verify_file)
 
@@ -280,6 +281,8 @@ class ModelManagerSP:
         raise DownloadCancelled("Download cancelled")
       self.selected_bundle.status = custom.ModelManagerSP.DownloadStatus.downloaded
       self.params.put(ACTIVE_BUNDLE_KEYS[source], model_bundle.to_dict(), block=True)
+      if source == "qcom":
+        self.params.put_bool(P_INITIALIZED, True)
       self.active_bundle = get_active_bundle(self.params, chestnut=self.chestnut_present)
 
     except Exception:
@@ -315,6 +318,18 @@ class ModelManagerSP:
         self._release_download_ref()
         self.selected_bundle = None
 
+  def _queue_initial_small_model(self) -> None:
+    if self.params.get_bool(P_INITIALIZED):
+      return
+    if get_selected_bundle(self.params, "qcom") is not None:
+      self.params.put_bool(P_INITIALIZED, True)
+      return
+    if self.params.get("ModelManager_DownloadRef") is not None:
+      return
+    resolved = resolve_bundle_by_ref(INITIAL_SMALL_MODEL_REF, self.source_models)
+    if resolved is not None and resolved[1] == "qcom":
+      self.params.put("ModelManager_DownloadRef", INITIAL_SMALL_MODEL_REF)
+
   def main_thread(self) -> None:
     """Main thread for model management"""
     rk = Ratekeeper(1, print_delay_threshold=None)
@@ -328,11 +343,7 @@ class ModelManagerSP:
         validate_active_bundles(self.params, self.source_models)
         self.active_bundle = get_active_bundle(self.params, chestnut=self.chestnut_present)
 
-        if get_selected_bundle(self.params, "chestnut") is not None and get_selected_bundle(self.params, "qcom") is None:
-          if self.params.get("ModelManager_DownloadRef") is None:
-            from openpilot.sunnypilot.models.model_name import DEFAULT_MODEL_REF
-            if DEFAULT_MODEL_REF:
-              self.params.put("ModelManager_DownloadRef", DEFAULT_MODEL_REF)
+        self._queue_initial_small_model()
 
         self._process_download_requests()
 
