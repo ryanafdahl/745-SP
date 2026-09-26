@@ -63,3 +63,15 @@ PYTHONPATH=/data/openpilot /usr/local/venv/bin/python tools/analyze_comma_routes
 Validation: all 65 device qlogs parsed with no errors; 7,739 compact model samples were summarized. Ruff passed with the device's openpilot configuration, and the no-matching-files case returned argparse exit status 2. No runtime driving code, model choice, device settings, or safety thresholds were changed.
 
 Next useful check is a parked paired capture of both devices around initial join/rejoin, with full-rate rlogs around the earlier send timeout or any repeat of it. Also inspect startup warmup and the isolated selfdrived lag event before attributing them to JetLink. A powered-off snapshot cannot establish the Jetson's present service or GPU status.
+
+## Follow-up: startup and isolated lag investigation
+
+The earlier full-rate capture completed: five rlogs cover segment 0 of both routes and segments 7–9 of the latest route. All five were decoded locally without a truncated segment. This evidence was collected before the v0.4.0 update and is separate from the incomplete archive of the subsequent short drive.
+
+Both routes' slowest startup inference was the first small-model frame: 1,287.87 and 1,288.84 ms, at +10.54 and +9.67 seconds respectively. These precede the large-model joins and coincide with startup communication warnings. The full-rate first large-model frames took 66.62 and 58.82 ms at +41.35 and +43.43 seconds; the compact qlogs missed those first frames. This reinforces the sampling limitation of the original table. The startup delay is real, but the logs alone do not separate model initialization, compilation, camera readiness, and scheduling costs within it.
+
+The isolated `selfdrivedLagging` event is at +494.063 seconds. In the surrounding ten seconds, all 200 full-rate model messages use the large model, with mean execution 38.35 ms, maximum 48.05 ms, and reported frame-drop field zero. Selfdrive-state publication intervals briefly rise to about 24 ms and then 34.95 ms immediately before the event. The nearest state has `enabled=false`; this field alone does not establish the state of every custom assistance feature.
+
+This supports a delayed comma selfdrive loop, without evidence of a concurrent Jetson inference slowdown or model fallback. The loop's ratekeeper triggers `selfdrivedLagging` independently of the model's execution-time field. Device telemetry in that ten-second window reports thermal state `ok` and memory usage 89%; CPU samples are not enough to identify the scheduling or blocking cause. No safety threshold was changed to hide the event.
+
+The [post-update report](JETLINK_DRIVE_2026-09-26.md) documents the new short drive, explains the repeated offroad catalog DNS retries, and records the separate Jetson startup ordering repair. The original one-off lag's underlying scheduling cause and the initial USB exchange delay remain unproven; neither is established as a sustained GPU performance problem.

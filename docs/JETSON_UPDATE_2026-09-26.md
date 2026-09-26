@@ -1,5 +1,7 @@
 # Jetson update to JetLink v0.4.0 — September 26, 2026
 
+Follow-up: [short drive results and verified boot-order repair](JETLINK_DRIVE_2026-09-26.md). The checks below describe the initial installation; the later report records the subsequent drive, startup failure, applied CDI dependency, and successful reboot.
+
 ## Installation
 
 Updated the desk-powered Jetson Orin Nano Super using the official, release-pinned installer:
