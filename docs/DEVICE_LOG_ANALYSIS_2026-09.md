@@ -1,5 +1,7 @@
 # Device log analysis: September 2026
 
+For the newer September 26 comma capture and drive analysis, see [Comma log analysis](COMMA_LOG_ANALYSIS_2026-09-26.md). Jetson platform and service findings below describe the earlier capture, not a current powered-off device check.
+
 This report summarizes private captures collected from the comma 4 and Jetson Orin Nano Super on September 25, 2026. Raw routes, journals, archives, addresses, and hardware identifiers are deliberately excluded from Git.
 
 The devices were physically disconnected during the September 25 snapshot. A missing USB gadget, an inactive JetLink server, and absent live JetLink parameters in that snapshot are therefore expected. They are not evidence of a drive-time failure.
