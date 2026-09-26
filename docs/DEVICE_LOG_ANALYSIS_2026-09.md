@@ -1,5 +1,7 @@
 # Device log analysis: September 2026
 
+Update: [JetLink v0.4.0 was installed on September 26](JETSON_UPDATE_2026-09-26.md). It supports the Jetson's existing JetPack 7.2.1 platform; the older platform-reversion guidance below is historical.
+
 For the newer September 26 comma capture and drive analysis, see [Comma log analysis](COMMA_LOG_ANALYSIS_2026-09-26.md). Jetson platform and service findings below describe the earlier capture, not a current powered-off device check.
 
 This report summarizes private captures collected from the comma 4 and Jetson Orin Nano Super on September 25, 2026. Raw routes, journals, archives, addresses, and hardware identifiers are deliberately excluded from Git.

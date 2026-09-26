@@ -1,5 +1,7 @@
 # Comma log analysis: September 26, 2026
 
+Subsequent maintenance: [Jetson update to JetLink v0.4.0](JETSON_UPDATE_2026-09-26.md). The drive measurements below precede that update.
+
 ## Scope and evidence
 
 Collected over SSH at approximately 20:58 UTC (13:58 PDT), with the car off and the Jetson unpowered as reported by the owner. The comma was offroad, JetlinkEnabled was 1, and there were no failed systemd units. No live Jetson connection or deployment was attempted. Missing Jetson USB enumeration in this snapshot is expected and is not a drive-time failure.
