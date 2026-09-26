@@ -27,7 +27,10 @@ class FakeParams(dict):
 class InitialModelTest(unittest.TestCase):
   def setUp(self):
     self.manager = ModelManagerSP.__new__(ModelManagerSP)
-    self.manager.params = self.params = FakeParams()
+    self.params = FakeParams()
+    params_patch = mock.patch.object(self.manager, 'params', self.params, create=True)
+    params_patch.start()
+    self.addCleanup(params_patch.stop)
     self.bundle = SimpleNamespace(ref=INITIAL_SMALL_MODEL_REF)
     self.manager.source_models = {'qcom': [self.bundle], 'chestnut': []}
     patcher = mock.patch('openpilot.sunnypilot.models.manager.get_selected_bundle', return_value=None)
