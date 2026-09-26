@@ -23,7 +23,7 @@ The built-in small model starts first. If the Jetson is still booting, the comma
 - USB FunctionFS transport: **Jetson USB-A -> comma USB-C**
 - Accelerator Link control in **Settings -> Models**, visible before the Jetson is detected
 - Large-model selection, download/provisioning progress, cached-engine validation, telemetry, reconnect, and native-model fallback
-- The default available Jetlink model is **Cinque Terre**. Its ONNX object is fetched only when it is needed; it is intentionally not included in the normal comma install.
+- The default available Jetlink model is **Cinque Terre Model V2 (September 08, 2026)**. Its ONNX object is fetched only when it is needed; it is intentionally not included in the normal comma install.
 
 The model ONNX is about **766 MB**. The TensorRT engine is stored separately on the Jetson and is of similar size, so leave several GB free for the container, model, engine cache, and updates.
 
