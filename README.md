@@ -81,6 +81,8 @@ Before driving, verify all of the following while parked:
 
 For a diagnostic drive, keep the first route short and retain logs from both devices. `modelV2.big=true`, live Jetlink telemetry, and no frame drops or reconnect/fallback events are stronger evidence than the icon alone.
 
+The September 2026 device review, its limits, and the storage cleanup priorities are recorded in [docs/DEVICE_LOG_ANALYSIS_2026-09.md](docs/DEVICE_LOG_ANALYSIS_2026-09.md). Raw device captures remain private and are ignored by Git. Use `python tools/analyze_jetlink_log.py <jetlink-log>` to summarize server timing without adding a raw journal to the repository.
+
 ## Honda Clarity and modified EPS note
 
 Vehicle support and any modified-EPS behavior depend on the exact fingerprint and EPS firmware seen by the comma. This repository does not make a torque modification itself and does not prove that a particular modified EPS is safe or supported. Validate the normal, stock vehicle interface first; treat modified-EPS testing as a separate, supervised validation effort.
