@@ -7,6 +7,7 @@ See the LICENSE.md file in the root directory for more details.
 import pyray as rl
 
 from openpilot.cereal import custom
+from openpilot.sunnypilot.models.initial_model import cancel_download, remember_small_model_choice
 from openpilot.sunnypilot import accelerators
 from openpilot.selfdrive.ui.mici.widgets.dialog import BigDialog
 from openpilot.sunnypilot.models.helpers import ACTIVE_BUNDLE_KEYS, get_selected_bundle
@@ -111,7 +112,7 @@ class ModelsLayoutMici(NavScroller):
     self.select_model_btn.set_click_callback(self._show_folders)
 
     self.cancel_download_btn = BigButton(tr("cancel download"))
-    self.cancel_download_btn.set_click_callback(lambda: ui_state.params.remove("ModelManager_DownloadRef"))
+    self.cancel_download_btn.set_click_callback(lambda: cancel_download(ui_state.params))
 
     self.link_toggle = AcceleratorLinkToggle()
     self.link_toggle.set_visible(link_toggle_meaningful())
@@ -210,10 +211,14 @@ class ModelsLayoutMici(NavScroller):
     self._scroller.scroll_panel.set_offset(0.0)
 
   def _select_model(self, bundle):
+    if self._selection_source == "qcom":
+      remember_small_model_choice(ui_state.params)
     ui_state.params.put("ModelManager_DownloadRef", bundle.ref)
     self._pop_to_main()
 
   def _select_default(self, source):
+    if source == "qcom":
+      remember_small_model_choice(ui_state.params)
     ui_state.params.remove(ACTIVE_BUNDLE_KEYS[source])
     self._pop_to_main()
 

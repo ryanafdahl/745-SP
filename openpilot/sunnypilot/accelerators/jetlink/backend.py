@@ -272,10 +272,12 @@ def make_status_publisher(pm, model):
 
 
 def uses_stock_runner() -> bool:
-  # the toggle alone. JetlinkModel defaults through selected_model(), so gating
-  # on it left an enabled device on modeld_tinygrad where jetlink never runs.
-  # Not presence or readiness: a late boot must not move manager mid-drive
-  return helpers.enabled()
+  # Both runners support Jetlink. Choose from the local bundle, never from
+  # USB presence/readiness: a late Jetson must not change manager mid-drive.
+  if not helpers.enabled():
+    return False
+  from openpilot.sunnypilot.models.helpers import get_selected_bundle
+  return get_selected_bundle() is None
 
 
 def model_choices() -> list[dict]:

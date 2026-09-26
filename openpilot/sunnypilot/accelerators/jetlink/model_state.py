@@ -30,9 +30,11 @@ from msgq.visionipc import VisionBuf
 
 from openpilot.common.swaglog import cloudlog
 from openpilot.selfdrive.modeld.constants import ModelConstants
+from openpilot.selfdrive.modeld.modeld import LAT_SMOOTH_SECONDS, LONG_SMOOTH_SECONDS, get_action_from_model
 from openpilot.selfdrive.modeld.parse_model_outputs import Parser
 from openpilot.system.camerad.cameras.nv12_info import get_nv12_info
 from openpilot.sunnypilot.accelerators.jetlink import warp_cache
+from openpilot.sunnypilot.modeld_v2.constants import ModelConstants as V2ModelConstants
 from openpilot.sunnypilot.modeld_v2.modeld_base import ModelStateBase
 
 SEND_RAW_PRED = os.getenv('SEND_RAW_PRED')
@@ -43,6 +45,12 @@ class JetlinkModelState(ModelStateBase):
   """Duck-types selfdrive.modeld.modeld.ModelState."""
 
   prev_desire: np.ndarray  # for tracking the rising edge of the pulse
+
+  constants = V2ModelConstants
+  LAT_SMOOTH_SECONDS = LAT_SMOOTH_SECONDS
+  LONG_SMOOTH_SECONDS = LONG_SMOOTH_SECONDS
+  PLANPLUS_CONTROL = 1.0
+  get_action_from_model = staticmethod(get_action_from_model)
 
   def __init__(self, cam_w: int, cam_h: int, client, spec, small=None, warp=None):
     ModelStateBase.__init__(self)
@@ -58,12 +66,6 @@ class JetlinkModelState(ModelStateBase):
     # a warm warp is handed in when there is one: the first call costs ~2 s and
     # this can run on modeld's frame thread (warp_cache.warm)
     self.warp = warp if warp is not None else warp_cache.load_warp(cam_w, cam_h, img_w * 2, img_h * 2)
-
-    # the small ModelState is only a geometry cross-check now
-    small_img = small.input_shapes['img'] if small is not None else None
-    if small_img is not None and tuple(small_img[2:]) != tuple(spec.input_shapes['img'][2:]):
-      raise RuntimeError(f"warp geometry {small_img[2:]} does not match the large model "
-                         + f"{spec.input_shapes['img'][2:]}; a large-model warp JIT is needed")
 
     self.input_shapes = spec.input_shapes
     self.output_slices = spec.output_slices
@@ -109,9 +111,10 @@ class JetlinkModelState(ModelStateBase):
       self.full_frames[key] = self._blob_cache[cache_key]
 
     # Model decides when action is completed, so desire input is just a pulse triggered on rising edge
-    inputs['desire_pulse'][0] = 0
-    self.npy['desire'][:] = np.where(inputs['desire_pulse'] - self.prev_desire > .99, inputs['desire_pulse'], 0)
-    self.prev_desire[:] = inputs['desire_pulse']
+    desire = inputs[next(k for k in inputs if k.startswith('desire'))]
+    desire[0] = 0
+    self.npy['desire'][:] = np.where(desire - self.prev_desire > .99, desire, 0)
+    self.prev_desire[:] = desire
     self.npy['traffic_convention'][:] = inputs['traffic_convention']
     self.npy['action_t'][:] = inputs['action_t']
     self.npy['tfm'][:, :] = transforms['img'][:, :]

@@ -88,8 +88,7 @@ def queued_name(current_ref) -> str | None:
 
 
 def slot_bundle(source: str):
-  # the qcom slot reads through effective_small_bundle: under the jetlink override
-  # stock modeld runs the default small model and the stored bundle is not loaded
+  # Both Jetlink runners report the local model they actually load.
   if source == "qcom":
     return effective_small_bundle(ui_state.params)
   return get_selected_bundle(ui_state.params, source)

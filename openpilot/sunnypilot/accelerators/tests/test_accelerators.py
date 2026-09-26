@@ -28,7 +28,8 @@ class SelectionTest(unittest.TestCase):
 
   def configure(self, enabled=None, model=None, ready_sha=None, spec_sha=None, gadget_error=None):
     params = {helpers.P_ENABLED: enabled, helpers.P_MODEL: model, helpers.P_READY: ready_sha}
-    for p in (mock.patch.object(helpers, '_get', side_effect=lambda k, d=None: params.get(k, d)),
+    for p in (mock.patch("openpilot.sunnypilot.models.helpers.get_selected_bundle", return_value=None),
+              mock.patch.object(helpers, '_get', side_effect=lambda k, d=None: params.get(k, d)),
               mock.patch.object(helpers, 'gadget_error', return_value=gadget_error),
               mock.patch.object(helpers, 'host_attached', return_value=False),
               mock.patch.object(helpers, 'dormant', return_value=False),
@@ -76,7 +77,7 @@ class SelectionTest(unittest.TestCase):
     self.configure(enabled=True, model='m', ready_sha='b' * 64, spec_sha='b' * 64)
     self.assertFalse(accelerators.ready())
 
-  def test_stock_runner_is_the_toggle_alone(self):
+  def test_stock_runner_without_a_selected_small_bundle(self):
     # configuration only, never link state or ready(): a late boot cannot move
     # manager between modelds mid-drive. The model defaults through
     # selected_model(), so it is not part of it either
@@ -88,6 +89,14 @@ class SelectionTest(unittest.TestCase):
     self.configure(enabled=None, model='m')
     with mock.patch.object(helpers, 'link_configured', return_value=True):
       self.assertFalse(accelerators.uses_stock_runner())
+
+  def test_selected_small_bundle_uses_its_runner_with_or_without_jetson(self):
+    self.configure(enabled=True, model='m')
+    with mock.patch("openpilot.sunnypilot.models.helpers.get_selected_bundle", return_value=object()):
+      self.assertFalse(accelerators.uses_stock_runner())
+      with mock.patch.object(helpers, 'link_configured', return_value=True):
+        self.assertFalse(accelerators.uses_stock_runner())
+    self.assertTrue(accelerators.enabled())
 
   def test_present_is_usb_independent_while_dormant(self):
     self.configure(enabled=True, model='m')

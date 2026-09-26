@@ -124,7 +124,7 @@ def get_selected_bundle(params: Params | None = None, source: str = "qcom") -> "
 
 
 def effective_small_bundle(params: Params | None = None) -> "custom.ModelManagerSP.ModelBundle | None":
-  # under the accelerator override stock modeld runs the default small model, not the stored qcom bundle
+  # An empty local selection uses the bundled model through stock modeld.
   if accelerators.uses_stock_runner():
     return None
   return get_selected_bundle(params, "qcom")
@@ -143,8 +143,7 @@ def get_active_bundle(params: Params | None = None, *, chestnut: bool | None = N
   # no cross-slot fallback: an empty active slot means the hardware default, which
   # only stock modeld can run - modeld_v2 requires a real bundle
   params = params or Params()
-  # the accelerator override ignores every stored bundle; an explicit chestnut is the
-  # manager describing its slots, which still resolve
+  # Stock Jetlink needs no local bundle; explicit chestnut describes a saved slot.
   if chestnut is None and accelerators.uses_stock_runner():
     return None
   return get_selected_bundle(params, get_active_source(chestnut=chestnut))

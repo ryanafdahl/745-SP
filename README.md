@@ -14,7 +14,7 @@ cameras -> local image warp -> USB 3 -> model history -> TensorRT inference
 vehicle controls <- model parser <- USB 3 <- model outputs
 ```
 
-The built-in small model starts first. If the Jetson is still booting, the comma continues with that model and joins the large Jetlink model after the USB link and cached TensorRT engine are ready. If the link is lost, the system falls back to the local model and retries the connection. A loss while engaged is a soft-disable condition.
+The selected small model starts first. If the Jetson is still booting, the comma continues with that model and joins the large Jetlink model after the USB link and cached TensorRT engine are ready. If the link is lost, the system falls back to the local model and retries the connection. A loss while engaged is a soft-disable condition.
 
 ## Included configuration
 
@@ -23,6 +23,7 @@ The built-in small model starts first. If the Jetson is still booting, the comma
 - USB FunctionFS transport: **Jetson USB-A -> comma USB-C**
 - Accelerator Link control in **Settings -> Models**, visible before the Jetson is detected
 - Large-model selection, download/provisioning progress, cached-engine validation, telemetry, reconnect, and native-model fallback
+- A fresh install downloads and selects **The Cool Peoples Model v3 (October 10, 2025)** (**TCPMV3**) as the small model. It runs on the comma and remains the fallback when Jetlink is enabled. Existing model selections are preserved.
 - The default available Jetlink model is **Cinque Terre Model V2 (September 08, 2026)**. Its ONNX object is fetched only when it is needed; it is intentionally not included in the normal comma install.
 
 The model ONNX is about **766 MB**. The TensorRT engine is stored separately on the Jetson and is of similar size, so leave several GB free for the container, model, engine cache, and updates.
@@ -49,7 +50,7 @@ Use the Jetson's USB-A host port. The Orin Nano devkit USB-C port is not the Jet
    installer.comma.ai/ryanafdahl/745-SP
    ```
 
-3. Let the installer finish. The first boot can take longer while system packages, prebuilt assets, and the local model initialize. Do not interrupt power during that work.
+3. Let the installer finish and remain online while parked for the first small-model download. In **Settings -> Models**, confirm **TCPMV3** is selected and the download is complete. The bundled **CD210** model remains available until the download succeeds. Failed or interrupted first-install downloads retry while parked; explicitly cancelling or choosing another small model stops automatic selection. Do not interrupt power during setup.
 4. Complete normal comma setup and calibration before testing the accelerator. Confirm the vehicle is recognized and that native driving functions correctly with the Jetson disconnected.
 5. While parked, open **Settings -> Models** and turn on **Accelerator Link**. The toggle is intentionally available even before USB detection.
 

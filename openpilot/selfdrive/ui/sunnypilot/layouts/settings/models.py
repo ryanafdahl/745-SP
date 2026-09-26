@@ -10,6 +10,7 @@ import time
 import pyray as rl
 
 from openpilot.cereal import custom
+from openpilot.sunnypilot.models.initial_model import cancel_download, remember_small_model_choice
 from openpilot.sunnypilot import accelerators
 from openpilot.sunnypilot.models.helpers import ACTIVE_BUNDLE_KEYS, get_selected_bundle, resolve_bundle_by_ref
 from openpilot.common.constants import CV
@@ -100,7 +101,7 @@ class ModelsLayout(Widget):
 
     self.cancel_download_item = button_item(lambda: tr("Cancel Verification") if self._verifying else tr("Cancel Download"),
                                             tr("Cancel"), "",
-                                            lambda: ui_state.params.remove("ModelManager_DownloadRef"))
+                                            lambda: cancel_download(ui_state.params))
 
     self.lane_turn_value_control = option_item_sp(tr("Adjust Lane Turn Speed"), "LaneTurnValue", 500, 2000,
                                                   tr("Set the maximum speed for lane turn desires. Default is 19 mph."),
@@ -266,7 +267,8 @@ class ModelsLayout(Widget):
     accelerator = ui_state.accelerator_view is not None
     if not (ui_state.chestnut_present or accelerator):
       return ""
-    fallback_name = default_model_name("qcom")
+    small_bundle = get_selected_bundle(ui_state.params, "qcom") if accelerator else None
+    fallback_name = small_bundle.internalName if small_bundle else default_model_name("qcom")
     state = big_model_state()
     if accelerator:
       # the accelerator's model comes from its own registry, so it reads like a Default big
@@ -316,6 +318,8 @@ class ModelsLayout(Widget):
       return
     selected_ref = self.model_dialog.selection_ref
     self.model_dialog = None
+    if self._selection_source == "qcom":
+      remember_small_model_choice(ui_state.params)
     if selected_ref == "Default":
       if self._selection_source in ACTIVE_BUNDLE_KEYS:
         ui_state.params.remove(ACTIVE_BUNDLE_KEYS[self._selection_source])
