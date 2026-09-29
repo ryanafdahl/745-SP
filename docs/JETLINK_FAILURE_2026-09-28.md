@@ -81,3 +81,14 @@ Validation on the parked comma: 150 regression tests ran successfully, with thre
 After explicit owner approval, both branches were published and their remote heads verified: source repair `30f613d920c92bd6f7c3026d02ed024632d66af3` on `ryanafdahl/745-SP` main, and deployment `33dbae4ebcc8e73a530d5ab15bd713f490e4c60e` on `ryanafdahl/openpilot` 745-SP. The installed commit is also retained locally under `refs/remotes/comma/readiness-fix`. A connected parked test and subsequent drive transition remain required; unit tests do not establish end-to-end USB operation.
 
 The parked comma was gracefully rebooted and verified at deployment commit `33dbae4eb` with a newly running jetlinkd, `IsOffroad=1`, and gadget setup marker `ok`. The launcher's Git-modification guard prevented the older staged update from replacing the repair. Final Jetson checks confirmed the inference service active and nvpmodel successful before transport to the car.
+## Post-repair test drive — September 28
+
+The owner observed the GPU icon change from blinking white to green while parked, then completed a short drive. All six qlogs and eight application logs were retrieved under ignored `diagnostics/2026-09-28-repair-drive/`. All qlogs parsed without errors and identify deployed commit `33dbae4ebcc8e73a530d5ab15bd713f490e4c60e`. Live Git status after the drive was clean.
+
+The recording spans 303.09 seconds: 58 small-model samples, followed by 529 large-model samples beginning at +38.83 seconds. There is no sampled return to the small model. Recorded onroad events contain no modeldLagging, selfdrivedLagging, commIssue, or commIssueAvgFreq message.
+
+Large-model execution mean/p95/maximum: 30.91/32.13/40.58 ms. The reported frame-drop field is zero in every sampled message. Across 250 telemetry samples, all report dead=false; GPU temperature ranges from 35.2 to 57.1 C, clock remains 1,020 MHz, reported supply is 4.928–4.976 V, and power is 9.12–12.66 W.
+
+At 18:31:21 PDT the initial connection attempt had no USB reader and scheduled a retry. At 18:31:26 the comma waited for host enumeration; at 18:31:33 the server answered; at 18:31:34.949 the link was ready; at 18:31:35.043 the large model joined. Its first three server GPU timings were 17.7–17.8 ms. No connection-loss or fallback event appears after the join in the captured application logs. The offroad daemon presented its gadget again at 18:36:00.486.
+
+This validates late connection and sustained large-model operation for one short drive. Qlogs are sampled evidence; zero in the reported frame-drop field does not prove every frame met its deadline. Repeated cold starts and longer drives remain untested. No device changes were made during this post-drive analysis. This report addition is saved locally; publication of test-drive findings requires separate approval after automatic review blocked the push.
