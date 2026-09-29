@@ -81,4 +81,3 @@ Validation on the parked comma: 150 regression tests ran successfully, with thre
 After explicit owner approval, both branches were published and their remote heads verified: source repair `30f613d920c92bd6f7c3026d02ed024632d66af3` on `ryanafdahl/745-SP` main, and deployment `33dbae4ebcc8e73a530d5ab15bd713f490e4c60e` on `ryanafdahl/openpilot` 745-SP. The installed commit is also retained locally under `refs/remotes/comma/readiness-fix`. A connected parked test and subsequent drive transition remain required; unit tests do not establish end-to-end USB operation.
 
 The parked comma was gracefully rebooted and verified at deployment commit `33dbae4eb` with a newly running jetlinkd, `IsOffroad=1`, and gadget setup marker `ok`. The launcher's Git-modification guard prevented the older staged update from replacing the repair. Final Jetson checks confirmed the inference service active and nvpmodel successful before transport to the car.
-
