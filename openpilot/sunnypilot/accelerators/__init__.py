@@ -8,7 +8,7 @@ An accelerator that runs the large driving model off the comma: jetlink.
 
 comma's chestnut board is not one of these: modeld, hardwared and the UI handle
 it natively and only ask here when no board is fitted. Selection is
-`if chestnut_present(): native elif accelerators.ready(): jetlink`.
+`if chestnut_present(): native elif accelerators.enabled(): jetlink`.
 
 Every function is a thin call into jetlink.backend and is safe on any device:
 feature off costs a param read, package absent answers the negative default.

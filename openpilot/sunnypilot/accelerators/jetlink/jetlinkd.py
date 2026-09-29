@@ -434,7 +434,9 @@ class Jetlinkd:
     if not helpers.enabled():
       if self.client is not None or self.ready:
         cloudlog.warning("jetlink: disabled, releasing the link")
-        helpers.set_engine_ready(None)
+        # Disabling releases USB, not the engine stored on the Jetson. Keep
+        # its verified identity across toggles and isolated parked tests.
+        # Each new attachment still verifies the engine with the server.
         self.ready = False
         self.close_link()
       if self.dormant:

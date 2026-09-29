@@ -65,4 +65,17 @@ This is a software readiness/reconnection gap. It explains the consistent all-sm
 
 With both devices connected by USB and powered, keep the comma offroad long enough for its normal daemon to detect the real Jetson and verify the cached engine. Confirm an `engine ready` event and a matching `JetlinkEngineReady` value before testing a subsequent drive transition. Do not manufacture a readiness marker simply to bypass verification.
 
-A durable code change should address both the parked-test cleanup side effect and the onroad inability to reconnect without a pre-existing readiness marker, while retaining model identity verification. Neither change has been deployed in this diagnostic pass. No device settings, services, or software were changed; no connected validation or recovery has yet been performed.
+The repair below addresses both the parked-test cleanup side effect and the onroad inability to reconnect without a pre-existing readiness marker. Connected validation remains pending.
+
+## Repair installed September 28
+
+- Stock modeld now starts the joining path when JetLink is enabled, matching the selected-small-model runner, instead of requiring the readiness marker at startup. Existing cached-spec/selected-model checks and the server handshake still apply.
+- Disabling JetLink releases USB and clears session state without deleting the verified engine identity. Each new attachment still verifies the server; disabling does not delete its engine cache.
+- A successful onroad engine handshake restores the readiness marker. Failed handshakes do not set it; an explicitly missing engine still clears it.
+- The older deployed build also needed the existing public `accelerators.enabled()` wrapper from the source repository.
+
+Deployment commit on the comma: `33dbae4ebcc8e73a530d5ab15bd713f490e4c60e`. Original files, the base commit, patch, and test output are retained in `/data/jetlink-repair-20260928/`. No unrelated Pixel project files were changed.
+
+Validation on the parked comma: 150 regression tests ran successfully, with three baseline-comparison tests skipped because the `develop` reference was unavailable. Tests used `OPENPILOT_PREFIX=jetlink_repair_test` to isolate parameters. Coverage includes disabled-link behavior, native accelerator isolation, missing-readiness startup, marker preservation, handshake success/failure, late join, disengagement gating, and fallback. Changed production files pass Python compilation and `git diff --check`. Live checks confirm JetLink enabled, selected/cached model identities matching, cached warp available for `(1344, 760, 512, 256)`, and no gadget setup error. The missing readiness marker was deliberately not fabricated.
+
+GitHub publication was blocked by automatic approval review and remains pending explicit approval. The installed commit is also retained locally under `refs/remotes/comma/readiness-fix`. A connected parked test and subsequent drive transition remain required; unit tests do not establish end-to-end USB operation.

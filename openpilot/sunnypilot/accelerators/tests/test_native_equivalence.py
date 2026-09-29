@@ -14,7 +14,7 @@ under fakes.
 
 Two calls that must not happen: a fitted board with PCIe trained asks
 accelerators nothing, because `not CHESTNUT` is the first term; no board and
-the link off stops at ready(), so prepare() never opens a link. The rest pins
+the link off stops at enabled(), so prepare() never opens a link. The rest pins
 the footprint: chestnut statements are develop's byte for byte, and the module
 is reachable from four call sites in five hunks.
 """
@@ -26,6 +26,7 @@ import time
 import unittest
 from pathlib import Path
 from types import SimpleNamespace
+from unittest import mock
 
 from openpilot.common.params import Params
 from openpilot.sunnypilot import accelerators
@@ -39,7 +40,7 @@ BASELINE = 'develop'
 
 # everything core openpilot may call on the module; a name added here without
 # a plan entry is a widened seam
-ACCELERATOR_CALLS = {'ready', 'prepare', 'make_model_state', 'make_status_publisher'}
+ACCELERATOR_CALLS = {'enabled', 'prepare', 'make_model_state', 'make_status_publisher'}
 
 
 def _parse(src: str) -> list[ast.stmt]:
@@ -87,13 +88,13 @@ class FakeAccelerators:
   true where the plan says a chestnut owns the drive.
   """
 
-  def __init__(self, ready=None):
+  def __init__(self, enabled=None):
     self.calls: list[str] = []
-    self._ready = ready if ready is not None else (lambda: True)
+    self._enabled = enabled if enabled is not None else (lambda: True)
 
-  def ready(self) -> bool:
-    self.calls.append('ready')
-    return self._ready()
+  def enabled(self) -> bool:
+    self.calls.append('enabled')
+    return self._enabled()
 
   def prepare(self) -> bool:
     self.calls.append('prepare')
@@ -232,18 +233,18 @@ class NativeEquivalence(unittest.TestCase):
     self.assertTrue(scope['model'].chestnut)
     self.assertIsNotNone(scope['chestnut_state'])
 
-  def test_no_board_and_the_link_off_stops_at_ready(self):
-    # the real module with the link off: ready() reads one param and nothing
+  def test_no_board_and_the_link_off_stops_at_enabled(self):
+    # the real module with the link off: enabled() reads one param and nothing
     # opens a gadget
     Params().remove(helpers.P_ENABLED)
     self.assertFalse(accelerators.ready())
 
-    accel = FakeAccelerators(ready=accelerators.ready)
+    accel = FakeAccelerators(enabled=accelerators.enabled)
     scope = self.seam.decide_and_load(accel, present=False, compiled=False, trained=False)
 
     self.assertFalse(scope['CHESTNUT'])
     self.assertFalse(scope['JETLINK'])
-    self.assertEqual(accel.calls, ['ready'], "the disabled link was asked more than whether it is ready")
+    self.assertEqual(accel.calls, ['enabled'], "the disabled link was asked more than whether it is enabled")
     self.assertNotIn('prepare', accel.calls)
     self.assertNotIn('make_model_state', accel.calls)
     self.assertNotIn('make_status_publisher', accel.calls)
@@ -254,18 +255,26 @@ class NativeEquivalence(unittest.TestCase):
   def test_a_board_that_never_trains_falls_through_to_the_question(self):
     # a chestnut device does ask, once, when the board is fitted but PCIe never
     # trains inside the poller wait: CHESTNUT is false, same as a bare device
-    accel = FakeAccelerators(ready=lambda: False)
+    accel = FakeAccelerators(enabled=lambda: False)
     scope = self.seam.decide_and_load(accel, present=True, compiled=True, trained=False)
 
     self.assertFalse(scope['CHESTNUT'])
     self.assertFalse(scope['JETLINK'])
-    self.assertEqual(accel.calls, ['ready'])
+    self.assertEqual(accel.calls, ['enabled'])
 
   def test_the_link_is_decided_before_the_process_goes_realtime(self):
     # prepare() starts tinygrad's device thread; after config_realtime_process
     # it would inherit SCHED_FIFO 54 on core 7 and preempt the frame loop
     self.assertLess(self.seam.decide_end, self.seam.realtime,
                     "the JETLINK decision moved after config_realtime_process")
+
+  def test_enabled_link_without_readiness_still_starts_joining(self):
+    with mock.patch.object(helpers, '_get', side_effect=lambda key, default=None: key == helpers.P_ENABLED):
+      accel = FakeAccelerators(enabled=accelerators.enabled)
+      scope = self.seam.decide_and_load(accel, present=False, compiled=False, trained=False)
+    self.assertTrue(scope['JETLINK'])
+    self.assertEqual(accel.calls, ['enabled', 'prepare', 'make_model_state', 'make_status_publisher'])
+    self.assertEqual(scope['model'].big_model_state, 'joining')
 
 
 class UpstreamFootprint(unittest.TestCase):
@@ -303,7 +312,7 @@ class UpstreamFootprint(unittest.TestCase):
     detail = '\n'.join(sites + [f"  hunks start at lines {hunk_starts}"])
 
     self.assertEqual({attr for _, attr in calls}, ACCELERATOR_CALLS, f"the seam widened:\n{detail}")
-    self.assertEqual(len(calls), 4, f"expected ready/prepare/make_model_state/make_status_publisher and nothing else:\n{detail}")
+    self.assertEqual(len(calls), 4, f"expected enabled/prepare/make_model_state/make_status_publisher and nothing else:\n{detail}")
     self.assertEqual(len(hunk_starts), 5, f"modeld.py's jetlink path is no longer five hunks:\n{detail}")
 
   def test_the_chestnut_block_never_mentions_the_accelerator_module(self):

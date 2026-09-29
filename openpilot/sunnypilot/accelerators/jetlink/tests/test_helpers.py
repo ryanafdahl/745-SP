@@ -247,6 +247,40 @@ class TestSelectedModel(unittest.TestCase):
 
 
 class TestSelectedModelReadiness(unittest.TestCase):
+  def test_late_join_restores_readiness_only_after_server_verification(self):
+    from types import SimpleNamespace
+    from jetlink.client import EngineMissing
+    from openpilot.sunnypilot.accelerators.jetlink import backend
+
+    spec = SimpleNamespace(sha256='a' * 64, nbytes=4096, frame_skip=4)
+    client = mock.Mock()
+    with mock.patch.object(backend.spec_cache, 'load', return_value=spec), \
+         mock.patch.object(helpers, 'selected_model', return_value={'oid': spec.sha256}), \
+         mock.patch.object(backend, '_connect_patiently', return_value=client), \
+         mock.patch.object(helpers, 'set_engine_ready') as marker:
+      def verified(*args, **kwargs):
+        marker.assert_not_called()
+        return spec
+
+      client.ensure_engine.side_effect = verified
+      self.assertEqual(backend._open_link(), (client, spec))
+      client.ensure_engine.assert_called_once_with(spec.sha256, spec.nbytes, frame_skip=4, build_timeout=120.0)
+      marker.assert_called_once_with(spec.sha256)
+
+      marker.reset_mock()
+      client.ensure_engine.side_effect = RuntimeError('handshake failed')
+      with self.assertRaisesRegex(RuntimeError, 'handshake failed'):
+        backend._open_link()
+      marker.assert_not_called()
+      client.close.assert_called_once()
+
+      client.close.reset_mock()
+      client.ensure_engine.side_effect = EngineMissing('no cached engine')
+      with self.assertRaises(EngineMissing):
+        backend._open_link()
+      marker.assert_called_once_with(None)
+      client.close.assert_called_once()
+
   def test_old_cached_engine_is_not_the_new_selection(self):
     from types import SimpleNamespace
     from openpilot.sunnypilot.accelerators.jetlink import backend

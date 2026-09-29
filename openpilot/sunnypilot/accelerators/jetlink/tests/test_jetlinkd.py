@@ -86,6 +86,20 @@ class TestProvisionCost(unittest.TestCase):
 
   ENTRY = {'name': 'Fake', 'oid': 'deadbeef', 'size': 4096}
 
+  def test_disabling_releases_usb_without_erasing_verified_engine(self):
+    d = jetlinkd.Jetlinkd()
+    client = mock.Mock()
+    d.client = client
+    d.ready = True
+    with mock.patch.object(jetlinkd.helpers, 'enabled', return_value=False), \
+         mock.patch.object(jetlinkd.helpers, 'set_engine_ready') as marker, \
+         mock.patch.object(d, 'untune_vm'):
+      d.step()
+    client.close.assert_called_once()
+    self.assertIsNone(d.client)
+    self.assertFalse(d.ready)
+    marker.assert_not_called()
+
   def setUp(self):
     self.model = Path(tempfile.mkdtemp()) / 'big_driving_supercombo.onnx'
     self.model.write_bytes(b'x' * 4096)

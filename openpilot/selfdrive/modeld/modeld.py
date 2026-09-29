@@ -263,7 +263,9 @@ def main(demo=False):
   else:
     params.remove("ChestnutActive")
   # before going realtime: prepare() starts tinygrad's device thread, which would inherit FIFO 54 on core 7
-  JETLINK = not CHESTNUT and accelerators.ready() and accelerators.prepare()
+  # Readiness can be absent after a parked test or a late Jetson boot. The
+  # joining state verifies the selected engine while the small model runs.
+  JETLINK = not CHESTNUT and accelerators.enabled() and accelerators.prepare()
 
   config_realtime_process(7, 54)
 

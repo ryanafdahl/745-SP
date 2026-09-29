@@ -257,6 +257,8 @@ def _open_link(client=None):
       # ready. Clear the record so the next parked period provisions again
       helpers.set_engine_ready(None)
       raise
+    # Restore readiness only after the server verifies the requested engine.
+    helpers.set_engine_ready(spec.sha256)
     client.deadline = INFERENCE_TIMEOUT
     return client, spec
   except BaseException:
