@@ -1,8 +1,9 @@
 #!/usr/bin/env python3
 """Supervised, ignition-off Tensor USB test. Never starts cameras or controls.
 
-Uses the comma's existing JetLink loan API; does not change its enable/readiness
-parameters or gadget configuration. Run only when physically present at the car.
+Uses the JetLink loan API by default. --legacy-owner temporarily disables
+Accelerator Link, waits for its older daemon to exit, and restores the setting
+after closing USB. Never changes engine readiness. Run only while at the car.
 """
 import argparse
 import json
@@ -23,10 +24,30 @@ SOURCE = '09d080f36965bb2a0790500452bd328aa03c484d0222aa79d1ad9f021a522aec'
 SOURCE_BYTES = 766040736
 
 
+def active_processes():
+    for entry in Path('/proc').glob('[0-9]*/cmdline'):
+        try: yield entry.read_bytes().split(b'\0')
+        except OSError: continue
+
+
+def wait_legacy_release(parked, timeout=15):
+    end = time.monotonic() + timeout
+    while time.monotonic() < end:
+        parked()
+        running = any(b'openpilot.sunnypilot.accelerators.jetlink.jetlinkd' in argv
+                      for argv in active_processes())
+        bound = Path('/sys/kernel/config/usb_gadget/jetlink/UDC').read_text().strip()
+        if not running and not bound: return
+        time.sleep(0.2)
+    raise RuntimeError('Legacy USB owner did not release the gadget; test refused')
+
+
 def main():
     p = argparse.ArgumentParser(description=__doc__)
     p.add_argument('--frames', type=int, default=1200)
     p.add_argument('--output', type=Path, required=True)
+    p.add_argument('--legacy-owner', action='store_true',
+                   help='temporarily release the older offroad daemon and restore Accelerator Link afterward')
     a = p.parse_args()
     if not 20 <= a.frames <= 2400: p.error('frames must be 20..2400')
     if a.output.exists(): p.error('output already exists; choose a new filename')
@@ -37,23 +58,31 @@ def main():
     parked()
     if not params.get_bool('JetlinkEnabled'):
         raise RuntimeError('Enable Accelerator Link while parked before this test')
-    for entry in Path('/proc').glob('[0-9]*/cmdline'):
-        try: argv = entry.read_bytes().split(b'\0')
-        except OSError: continue
+    for argv in active_processes():
         if any(Path(v.decode(errors='replace')).name in ('modeld', 'camerad') or v == b'openpilot.selfdrive.modeld.modeld' for v in argv):
             raise RuntimeError('Camera/model processes are active; test refused')
     def interrupted(*_): raise RuntimeError('Test interrupted or timed out')
     for sig in (signal.SIGINT, signal.SIGTERM, signal.SIGALRM): signal.signal(sig, interrupted)
     signal.alarm(180)
     client = loan = None
+    restore_link = False
     rows = []
     report = {'source_sha256':SOURCE, 'transport':'direct comma USB', 'driving_ready':False,
-              'requested_frames':a.frames, 'warmup_frames':20, 'failures':[]}
+              'requested_frames':a.frames, 'warmup_frames':20, 'failures':[],
+              'usb_ownership':'legacy exclusive' if a.legacy_owner else 'loan'}
     try:
-        loan = borrow(name='clarity-parked-test', timeout=10)
-        if loan is None: raise RuntimeError('JetLink owner could not lend USB; no settings were changed')
-        parked()
-        client = JetlinkClient.open_loan(loan, name='clarity-parked-test', want_hidden=True, deadline=2)
+        if a.legacy_owner:
+            restore_link = True
+            params.put_bool('JetlinkEnabled', False, block=True)
+            wait_legacy_release(parked)
+            client = JetlinkClient.open_ffs('/dev/ffs-jetlink',
+                gadget='/sys/kernel/config/usb_gadget/jetlink',
+                name='clarity-parked-test', want_hidden=True, deadline=2)
+        else:
+            loan = borrow(name='clarity-parked-test', timeout=10)
+            if loan is None: raise RuntimeError('JetLink owner could not lend USB; no settings were changed')
+            parked()
+            client = JetlinkClient.open_loan(loan, name='clarity-parked-test', want_hidden=True, deadline=2)
         hello = client.hello(timeout=20)
         parked()
         if hello.get('validation') != 'parked_only' or hello.get('device') != 'tensor-Tensor_G6':
@@ -93,6 +122,13 @@ def main():
             if resource:
                 try: resource.close()
                 except Exception as e: report['failures'].append(f'Cleanup: {e}')
+        if restore_link:
+            try:
+                params.put_bool('JetlinkEnabled', True, block=True)
+                report['accelerator_link_restored'] = params.get_bool('JetlinkEnabled')
+                if not report['accelerator_link_restored']:
+                    raise RuntimeError('Accelerator Link did not restore')
+            except Exception as e: report['failures'].append(f'Restore: {e}')
         report['measured_frames']=len(rows)
         report['protocol_pass']=len(rows)==a.frames and not report['failures']
         if rows:
@@ -105,7 +141,7 @@ def main():
         a.output.parent.mkdir(parents=True,exist_ok=True)
         a.output.write_text(json.dumps(report,indent=2)+'\n')
         print(json.dumps(report,indent=2),flush=True)
-        print('USB loan released. Turn off Parked USB Test on the Pixel. Driving remains blocked.',flush=True)
+        print('USB test ended. Turn off Parked USB Test on the Pixel. Driving remains blocked.',flush=True)
     return 0 if report['protocol_pass'] and report.get('timing_pass') else 1
 
 

@@ -80,14 +80,14 @@ The Pixel was left with **Parked USB Test off**. It must be enabled explicitly w
 3. The script is already staged on the comma at `/data/clarity-tensor-parked-test.py`. From your computer run:
 
    ```sh
-   ssh comma@COMMA_IP '/usr/local/venv/bin/python /data/clarity-tensor-parked-test.py --frames 1200 --output /data/clarity-parked-result.json'
+   ssh comma@COMMA_IP '/usr/local/venv/bin/python /data/clarity-tensor-parked-test.py --legacy-owner --frames 120 --output /data/clarity-parked-brief.json'
    ```
 
-   For another installation, copy [parked-test.py](parked-test.py) to that path first. Choose a new result filename for each run.
-4. Review protocol success, negotiated USB speed, round-trip p95/p99/max, and missed 50 ms deadlines. The script refuses ignition-on/camera/model activity, checks offroad state before each inference, and releases the existing daemon's USB loan even on failure. It does not change enable/readiness parameters, start cameras/controls, or send steering commands.
+   For another installation, copy [parked-test.py](parked-test.py) to that path first. Choose a new result filename for each run. Start with 120 measured frames; repeat with `--frames 1200` only after a clean short check. `--legacy-owner` matches this comma's installed offroad daemon: it temporarily disables Accelerator Link, waits for the daemon to exit and USB to unbind, then opens the interface exclusively. It closes USB and restores Accelerator Link afterward, including on failure. On newer installations whose daemon exposes `/dev/shm/jetlink-lend.sock`, omit this flag to borrow the existing owner's endpoints without changing settings.
+4. Review protocol success, negotiated USB speed, round-trip p95/p99/max, and missed 50 ms deadlines. The script refuses ignition-on/camera/model activity, checks offroad state before each inference, and releases USB even on failure. Legacy ownership temporarily changes only the enable setting; engine readiness is never written by the harness. It does not start cameras/controls or send steering commands.
 5. Turn **Parked USB Test off** when finished. A passing synthetic parked result is one transport milestone; camera-input parity, in-mount charging/heat, reconnect behavior, and driving validation remain separate.
 
-The comma was verified reachable and offroad, and its installed loan API was checked. The parked script has been staged and syntax checked, **not executed**.
+Live inspection on October 3 found that the client library has a loan API but the installed offroad daemon does not expose it. The harness now supports that older daemon explicitly; all 11 harness regression tests pass. The [first direct-USB attempt](parked-connection-2026-10-03.json) completed **zero inference frames**: the phone did not read HELLO before the 15-second write watchdog expired. Cleanup restored Accelerator Link and its offroad daemon. This is an incomplete connection check, not a TPU timing result; confirm the Pixel's test switch and USB permission before retrying.
 
 ## Repeat desk validation
 

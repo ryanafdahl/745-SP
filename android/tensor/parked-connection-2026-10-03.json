@@ -1,0 +1,14 @@
+{
+  "source_sha256": "09d080f36965bb2a0790500452bd328aa03c484d0222aa79d1ad9f021a522aec",
+  "transport": "direct comma USB",
+  "driving_ready": false,
+  "requested_frames": 120,
+  "warmup_frames": 20,
+  "failures": [
+    "gadget write had no reader before deadline; link abandoned"
+  ],
+  "usb_ownership": "legacy exclusive",
+  "accelerator_link_restored": true,
+  "measured_frames": 0,
+  "protocol_pass": false
+}
