@@ -35,6 +35,7 @@ Software and model selection were updated on October 3, 2026. Hardware details r
 | Power profile | MAXN_SUPER, mode 2 |
 | Car power behavior | Switched with the car; suspend timer disabled |
 | Data connection | Jetson USB-A host port → comma USB-C, USB 3 data cable |
+| Jetson networking | Ethernet; retired USB Wi-Fi driver removed October 3 |
 | Model cache | `/mnt/data/jetlink` on the Jetson |
 
 ### Which Jetson is it?
@@ -132,9 +133,17 @@ The APK built successfully, passed 51 Android unit tests, and started its native
 
 All eight upstream master updates through [`a5f44653d`](https://github.com/sunnypilot/sunnypilot/commit/a5f44653d7f43ad57fef2f546f3916ec4cbf3c56) are integrated: model-loader/tinygrad compatibility and tests, cache clearing on mici, workflow cleanup and fork model builds, camera-offset geometry, modelDataV2SP validity, the LagdToggleDelay UI freeze fix, and model-list refresh feedback. JetLink controls and fallback remain intact.
 
-The source repository imports upstream changes as commits because its initial snapshot has separate history. The comma deployment branch merges upstream history. The staged source suite ran 421 tests (416 passed, five skipped); the staged deployment suite ran 379 (374 passed, five skipped). Both successfully loaded the comma's selected CD210 cached small model with the new tinygrad pin. Hidden-window GUI tests and the overlay's Git-dependent default-model hash test were excluded from these counts. New software still needs parked direct-USB and driving validation.
+The source repository imports upstream changes as commits because its initial snapshot has separate history. The comma deployment branch merges upstream history. The staged source suite ran 421 tests (416 passed, five skipped); the staged deployment suite ran 379 (374 passed, five skipped). Both successfully loaded the comma's selected CD210 cached small model with the new tinygrad pin. Hidden-window GUI tests and the overlay's Git-dependent default-model hash test were excluded from these counts. The subsequent [October 3 drive](docs/JETLINK_DRIVE_2026-10-03.md) exercised this deployment over USB; longer-drive and failure-recovery validation remain open.
 
 ## What has been verified
+
+The [October 3 full-rate analysis](docs/JETLINK_DRIVE_2026-10-03.md) covers a **331.80-second** recording on the updated Clarity Pilot deployment. The Jetson joined at **+28.21 s**, followed by **6,071 consecutive large-model outputs** with no recorded fallback or large-model frame-ID gap. Comma-reported model execution averaged **25.77 ms**, with **27.24 ms p95**. Its maximum, **52.36 ms**, was the join frame. These are model-run timings, not pure GPU or complete vehicle-control latency.
+
+The first small-model output took **1.28 s** and was invalid; startup skipped 26 camera frame IDs. Both startup outliers preceded engagement. No lag or communication event was recorded. The comma retained 290 Jetson telemetry samples, but the drive's independent server journal could not be recovered after the Jetson was moved to the desk. Its desk boot loaded V2 at 11.26 s; that is not a measurement of the drive's boot time. See the report for the timeline, other warnings, and limits.
+
+The same report records removal of the retired USB Wi-Fi dongle's `rtl8821au` DKMS driver. Ethernet and JetLink stayed active; a rollback archive was retained on the Jetson. The Pixel still requires its own inference and USB qualification.
+
+The following results describe older builds:
 
 The [September 26 short drive](docs/JETLINK_DRIVE_2026-09-26.md) recorded 3 minutes 50 seconds, including about 3 minutes on the large model. Sampled large-model execution averaged **31.70 ms**, with **33.79 ms p95**. The largest sample, **204.81 ms**, occurred at the initial large-model join. These are sampled inference timings, not complete camera-to-control latency or a guarantee that every frame met its deadline.
 
@@ -167,6 +176,7 @@ sudo journalctl -b -u nvpmodel.service -u nvidia-cdi-refresh.service -u jetlink-
 
 | Report | Covers |
 | --- | --- |
+| [October 3 V2 drive and Wi-Fi retirement](docs/JETLINK_DRIVE_2026-10-03.md) | Full-rate frame timings, startup retry, telemetry, journal limits, and external USB Wi-Fi driver removal |
 | [Comma drive analysis](docs/COMMA_LOG_ANALYSIS_2026-09-26.md) | Two earlier drives, first-frame delays, and the isolated selfdrive-loop lag investigation |
 | [Jetson v0.4.0 update](docs/JETSON_UPDATE_2026-09-26.md) | Release pin, runtime, power configuration, backups, and engine rebuild |
 | [Post-update drive and boot repair](docs/JETLINK_DRIVE_2026-09-26.md) | Short-drive results, DNS retries, startup fix, and remaining validation |
