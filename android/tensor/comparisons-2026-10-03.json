@@ -1,0 +1,157 @@
+{
+  "automatic_precision": {
+    "backend": "litert",
+    "device": "tensor-Tensor_G6",
+    "transport": "desk Wi-Fi TCP",
+    "warmup_frames": 10,
+    "measured_frames": 100,
+    "round_trip": {
+      "mean_ms": 74.15598997999723,
+      "p95_ms": 81.99043899999197,
+      "max_ms": 104.06191500010209,
+      "over_50ms": 100
+    },
+    "inference": {
+      "mean_ms": 49.553689999999996,
+      "p95_ms": 52.7069,
+      "max_ms": 53.545,
+      "over_50ms": 60
+    },
+    "queues": {
+      "mean_ms": 3.86446,
+      "p95_ms": 5.026599999999999,
+      "max_ms": 5.95,
+      "over_50ms": 0
+    },
+    "server_total": {
+      "mean_ms": 53.49203000000001,
+      "p95_ms": 57.3766,
+      "max_ms": 58.437,
+      "over_50ms": 84
+    }
+  },
+  "explicit_fp16": {
+    "backend": "litert",
+    "device": "tensor-Tensor_G6",
+    "transport": "desk Wi-Fi TCP",
+    "warmup_frames": 10,
+    "measured_frames": 100,
+    "round_trip": {
+      "mean_ms": 71.76087304000417,
+      "p95_ms": 78.92659380004545,
+      "max_ms": 84.55089099999213,
+      "over_50ms": 100
+    },
+    "inference": {
+      "mean_ms": 49.025960000000005,
+      "p95_ms": 51.5751,
+      "max_ms": 52.17,
+      "over_50ms": 45
+    },
+    "queues": {
+      "mean_ms": 4.33928,
+      "p95_ms": 5.420449999999999,
+      "max_ms": 6.526,
+      "over_50ms": 0
+    },
+    "server_total": {
+      "mean_ms": 53.44375999999999,
+      "p95_ms": 56.42085,
+      "max_ms": 58.269,
+      "over_50ms": 85
+    }
+  },
+  "fp16_byte_history": {
+    "backend": "litert",
+    "device": "tensor-Tensor_G6",
+    "transport": "desk Wi-Fi TCP",
+    "warmup_frames": 10,
+    "measured_frames": 100,
+    "round_trip": {
+      "mean_ms": 69.85706391999884,
+      "p95_ms": 79.46000784999114,
+      "max_ms": 86.3418370000204,
+      "over_50ms": 100
+    },
+    "inference": {
+      "mean_ms": 49.30546999999999,
+      "p95_ms": 51.830549999999995,
+      "max_ms": 52.874,
+      "over_50ms": 55
+    },
+    "queues": {
+      "mean_ms": 1.0775,
+      "p95_ms": 1.4844,
+      "max_ms": 1.575,
+      "over_50ms": 0
+    },
+    "server_total": {
+      "mean_ms": 50.465330000000016,
+      "p95_ms": 53.202600000000004,
+      "max_ms": 54.12,
+      "over_50ms": 69
+    }
+  },
+  "fp16_byte_history_sustained": {
+    "backend": "litert",
+    "device": "tensor-Tensor_G6",
+    "transport": "desk Wi-Fi TCP",
+    "warmup_frames": 10,
+    "measured_frames": 100,
+    "round_trip": {
+      "mean_ms": 68.99643453000522,
+      "p95_ms": 78.9104186000202,
+      "max_ms": 93.81366299999172,
+      "over_50ms": 100
+    },
+    "inference": {
+      "mean_ms": 46.256930000000004,
+      "p95_ms": 47.94075,
+      "max_ms": 49.132,
+      "over_50ms": 0
+    },
+    "queues": {
+      "mean_ms": 0.9622999999999999,
+      "p95_ms": 1.4744,
+      "max_ms": 1.682,
+      "over_50ms": 0
+    },
+    "server_total": {
+      "mean_ms": 47.29428999999999,
+      "p95_ms": 49.138099999999994,
+      "max_ms": 50.226,
+      "over_50ms": 1
+    }
+  },
+  "fp16_byte_history_burst": {
+    "backend": "litert",
+    "device": "tensor-Tensor_G6",
+    "transport": "desk Wi-Fi TCP",
+    "warmup_frames": 10,
+    "measured_frames": 100,
+    "round_trip": {
+      "mean_ms": 51.85507285000199,
+      "p95_ms": 59.33643815004643,
+      "max_ms": 64.7330059999831,
+      "over_50ms": 62
+    },
+    "inference": {
+      "mean_ms": 32.971340000000005,
+      "p95_ms": 34.049299999999995,
+      "max_ms": 36.213,
+      "over_50ms": 0
+    },
+    "queues": {
+      "mean_ms": 0.7711599999999998,
+      "p95_ms": 1.20605,
+      "max_ms": 1.378,
+      "over_50ms": 0
+    },
+    "server_total": {
+      "mean_ms": 33.799910000000004,
+      "p95_ms": 35.2225,
+      "max_ms": 37.364,
+      "over_50ms": 0
+    }
+  }
+}

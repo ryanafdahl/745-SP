@@ -1,0 +1,21 @@
+Cinque Terre V2 FP16, Tensor G6, 128 synthetic recurrent frames, seed 7.
+Unchanged upstream verify_parity.py thresholds. Every frame also passed.
+
+pooled over 128 frames, per slice and per column:
+    action                   corr 0.999993  by error, max abs 0.04492 <= 0.5496     max abs   0.0449  mean abs 0.00570
+    desire_pred              corr 0.999984  (compared whole)                        max abs   0.1094  mean abs 0.03029
+    desire_state             corr 0.999989  by error, max abs 0.3281 <= 5.197       max abs   0.3281  mean abs 0.06095
+    hidden_state             corr 0.999978  (compared whole)                        max abs   0.2656  mean abs 0.01175
+    lane_lines               corr 0.999961  worst col 0.999885 mu[1]                    max abs   0.1797  mean abs 0.01413
+    lane_lines_prob          corr 0.999843  by error, max abs 0.1992 <= 0.7883      max abs   0.1992  mean abs 0.04878
+    lead                     corr 0.999982  worst col 0.999960 mu[2]    (4 by error)    max abs   1.1250  mean abs 0.03264
+    lead_prob                corr 0.999979  by error, max abs 0.09082 <= 0.893      max abs   0.0908  mean abs 0.02089
+    meta                     corr 0.999962  (compared whole)                        max abs   0.1367  mean abs 0.03476
+    pad                      corr 1.000000  by error, max abs 0 <= 0                max abs   0.0000  mean abs 0.00000
+    plan                     corr 0.999977  worst col 0.999916 std[13]  (10 by error)   max abs   0.7812  mean abs 0.00860
+    pose                     corr 0.999994  no column correlated        (12 by error)   max abs   0.1641  mean abs 0.01399
+    road_edges               corr 0.999971  worst col 0.999854 mu[1]                    max abs   0.1699  mean abs 0.01584
+    road_transform           corr 0.999997  no column correlated        (12 by error)   max abs   0.0664  mean abs 0.01621
+    wide_from_device_euler   corr 0.999997  no column correlated        (6 by error)    max abs   0.0625  mean abs 0.01104
+
+OK: every slice and every column at or above corr 0.999, or within 10% of its largest value where too small or too quiet to correlate, per frame and pooled over all 128 frames

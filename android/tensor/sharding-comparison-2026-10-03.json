@@ -1,0 +1,66 @@
+{
+  "date_utc": "2026-10-03T17:44:52.037283+00:00",
+  "transport": "Desk USB ADB TCP forwarding, maximum sharding",
+  "source_sha256": "09d080f36965bb2a0790500452bd328aa03c484d0222aa79d1ad9f021a522aec",
+  "warmup_frames": 20,
+  "requested_frames": 200,
+  "period_ms": 50,
+  "backend": "litert",
+  "device": "tensor-Tensor_G6",
+  "measured_frames": 200,
+  "finite_frames": 200,
+  "failures": [],
+  "elapsed_s": 12.031999999999243,
+  "thermal_samples": [
+    {
+      "elapsed_s": 0.4,
+      "status": 0,
+      "battery_c": 28.0
+    },
+    {
+      "elapsed_s": 10.5,
+      "status": 0,
+      "battery_c": 28.0
+    }
+  ],
+  "round_trip": {
+    "mean_ms": 53.67938299988964,
+    "p50_ms": 53.22714999965683,
+    "p95_ms": 58.52193499995337,
+    "p99_ms": 69.31013999892456,
+    "max_ms": 72.13219999903231,
+    "over_50ms": 196
+  },
+  "inference": {
+    "mean_ms": 38.38635,
+    "p50_ms": 38.307,
+    "p95_ms": 40.12225,
+    "p99_ms": 40.84009,
+    "max_ms": 41.304,
+    "over_50ms": 0
+  },
+  "queues": {
+    "mean_ms": 0.9817949999999999,
+    "p50_ms": 1.0125,
+    "p95_ms": 1.3843499999999997,
+    "p99_ms": 1.7443599999999897,
+    "max_ms": 5.41,
+    "over_50ms": 0
+  },
+  "server_total": {
+    "mean_ms": 39.435525,
+    "p50_ms": 39.3935,
+    "p95_ms": 41.196999999999996,
+    "p99_ms": 41.95397,
+    "max_ms": 46.758,
+    "over_50ms": 0
+  },
+  "blocks_1200": [
+    {
+      "start_frame": 0,
+      "frames": 200,
+      "round_trip_p95_ms": 58.52193499995337,
+      "server_p95_ms": 41.196999999999996
+    }
+  ]
+}

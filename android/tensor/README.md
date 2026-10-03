@@ -1,22 +1,43 @@
 # Google Tensor TPU support
 
-This patch adds Google Tensor TPU execution to JetLink 0.8.0 for Tensor G5/G6. It preserves the existing GPU, CPU, and Qualcomm choices. Google Tensor uses LiteRT 2.2.0 AOT compilation; the SDK compiler runs on an x86-64 Linux workstation, while the APK contains only the matching, hash-verified Tensor dispatch runtime.
+**Ready for a supervised synthetic parked-car USB test. Driving remains blocked in Tensor mode.** The Pixel runs Cinque Terre V2 on Tensor G6 using LiteRT 2.2.0 and the locally supplied Google Tensor SDK. The installed app is `0.8.0-clarity-tensor.2` (code 802).
 
-## Verified result on October 3, 2026
+## Results on October 3, 2026
 
-- Pixel 11 Pro XL, Tensor G6, Android 17; app version `0.8.0-clarity-tensor.1` / code 801. Its previous processor setting was CPU.
-- Cinque Terre V2 source SHA-256: `09d080f36965bb2a0790500452bd328aa03c484d0222aa79d1ad9f021a522aec` (766,040,736 bytes).
-- SDK compiler SHA-256: `d74bea45081aa90a39505a675c15f566d46dbcc35e55a98f755c02017464cd1f`.
-- Automatic-precision compiled model SHA-256: `3868bc302c17f53f98b3e3d639a11de48d114e6f63b33e207da435decec879de` (834,554,128 bytes). All **2,424/2,424 operators** offloaded to **one TPU partition**. The runtime's full-delegation check passed.
-- 32 synthetic, varying-input frames returned finite outputs. Against the original ONNX, **14 of 15 output slices passed**; the **plan** slice failed the unchanged upstream parity criteria (worst pooled column correlation 0.998291 versus the 0.999 requirement).
-- 100 measured desk Wi-Fi frames after 10 warmups: TPU inference mean **49.55 ms**, p95 **52.71 ms**, max **53.55 ms**, 60/100 above 50 ms. Server total mean **53.49 ms**, p95 **57.38 ms**. Full round-trip mean **74.16 ms**, p95 **81.99 ms**, 100/100 above 50 ms. [Machine-readable timing summary](benchmark-2026-10-03.json).
-- **USB is disabled for Tensor mode** because numerical and timing qualification has not passed. Existing GPU/CPU/Qualcomm USB choices retain their behavior. This is working TPU integration for desk research, not a driving-ready Pixel accelerator.
-- Explicit FP16 and no-truncation compilation attempts did not produce usable models. One failure was a logged Linux OOM; later attempts ended with WSL process/session failure, including `Wsl/Service/E_UNEXPECTED`. Maximum sharding and temporary swap did not resolve it. Temporary swap was removed; no permanent WSL configuration was changed.
-- Release build and 53 Android tests passed; three native manifest tests passed, including four mismatch cases. Pixel storage had 341 GiB free before these model imports.
+Explicit FP16 compilation fixed the earlier plan-output mismatch. Image history now retains bytes instead of converting bytes to half precision and back. Tensor runtime burst mode supplies the latency margin needed for the next test. The original ONNX model, output interpretation, and numerical acceptance thresholds are unchanged.
 
-## Rebuild the app
+| Short desk comparison | Inference mean | Inference p95 | Queue mean | Server p95 |
+| --- | ---: | ---: | ---: | ---: |
+| Initial automatic precision | 49.55 ms | 52.71 ms | 3.86 ms | 57.38 ms |
+| Explicit FP16 | 49.03 ms | 51.58 ms | 4.34 ms | 56.42 ms |
+| FP16 + byte image history | 49.31 ms | 51.83 ms | 1.08 ms | 53.20 ms |
+| Above + sustained mode | 46.26 ms | 47.94 ms | 0.96 ms | 49.14 ms |
+| Above + burst mode, selected | **32.97 ms** | **34.05 ms** | **0.77 ms** | **35.22 ms** |
 
-Start with upstream commit `9f3d3187758b810adc99b06cc0a1a19ab73b7acb` and the toolchains documented in `android/README.md` upstream. Apply `tensor-support.patch` from this directory to that checkout:
+These comparisons used the same seeded workload over Wi-Fi, with 10 warmups and 100 measured frames each; they are short experiments, not a thermal qualification. [Raw comparisons](comparisons-2026-10-03.json). Maximum sharding was also tested and was slower (38.39 ms mean inference over 200 ADB desk frames versus 33.62 ms with minimal sharding), so minimal sharding is retained. [Sharding result](sharding-comparison-2026-10-03.json).
+
+- **Accuracy:** all 15 slices passed the unchanged upstream criteria on 32 recurrent frames (seed 0), then 128 frames (seed 7). The 128-frame plan's worst correlated column was **0.999916**, above 0.999; maximum plan absolute difference was 0.7812 across mixed-unit raw outputs. Small/quiet columns use upstream's existing absolute-error rules. This is numerical agreement on synthetic inputs, not an assessment of driving quality. [32-frame results](parity-32-seed0.txt), [128-frame results](parity-128-seed7.txt).
+- **10-minute soak:** 12,000 measured frames after 20 warmups, about 612 seconds. Every output was finite; zero protocol/inference failures. Inference mean **33.88 ms**, p95 **35.47 ms**, max **44.02 ms**. Server total mean **34.92 ms**, p95 **36.72 ms**, max **44.66 ms**; **0/12,000** server samples above 50 ms. Per-1,200-frame server p95 stayed between 36.58 and 36.88 ms. [Full soak summary](soak-2026-10-03.json).
+- **Thermals:** Android thermal status remained 0 at all 61 samples; battery temperature rose from 28.3°C to a maximum of 34.6°C while connected to the desk USB cable. This does not establish performance in a hot car or intended mount.
+- **Transport remains open:** ADB round-trip mean **49.75 ms**, p95 **54.39 ms**, p99 **63.75 ms**, max **113.94 ms**; 3,943/12,000 exchanges exceeded 50 ms. ADB forwarding is not the comma's direct USB transport. Its full round-trip timing did **not** pass a 50 ms p95 gate. The next parked test measures the actual USB path.
+- **Final APK:** the soak candidate used the same inference and queue implementation; the final APK adds the parked-only protocol gate and temporary USB switch. A fresh [32-frame parity capture](parity-installed-32-seed0.txt) passed on the final installed APK. Its [separate one-minute check](installed-check-2026-10-03.json) completed 1,200 frames, with inference p95 35.35 ms, server p95 36.65 ms, max server 39.75 ms, and zero failures. APK SHA-256: `b1bebef66960a0a3e0129f87b2b8176ec2bacb5e588444218e8947b176a0cfd1`.
+- **Regression checks:** release build; 54 Android tests; 24 native tests across 9 suites (including byte-exact queue wrap/reset/conformance tests and parked-protocol rejection); 57 Python transport tests; 5 Linux parked-harness tests. The complete patch applies to the pinned upstream commit. An initial broad host suite also included an unrelated ONNX Runtime version check; that check failed because the host runtime was not loaded, and is excluded from these targeted passing counts.
+
+The previous automatic-precision experiment remains in [the initial report](results-2026-10-03-initial.md).
+
+## Exact model and compiler
+
+- Original V2 ONNX: `09d080f36965bb2a0790500452bd328aa03c484d0222aa79d1ad9f021a522aec`, 766,040,736 bytes.
+- Selected compiled model: `fc393523c5c1ddba9774382db513a5c62fad50cb187968ea25bc96db5480b51b`, 834,528,528 bytes.
+- Compiler: `d74bea45081aa90a39505a675c15f566d46dbcc35e55a98f755c02017464cd1f`.
+- Target `Tensor_G6`, precision `half`, sharding `minimal`, LiteRT `2.2.0`; all **2,424/2,424** operators compiled to one TPU partition. The app requires full delegation and does not silently fall back.
+- [Machine-readable manifest](qualified-model.json). The SDK compiler and compiled model stay local and are not redistributed in this repo.
+
+The successful FP16 compile took 98 seconds, with maximum compiler RSS around 14.7 GiB. A temporary 22 GiB WSL limit allowed it to finish where the default 15 GiB environment failed. Build daemons were stopped during compilation. The temporary WSL configuration was removed after testing.
+
+## Rebuild and compile
+
+Start from upstream `9f3d3187758b810adc99b06cc0a1a19ab73b7acb` and apply [tensor-support.patch](tensor-support.patch). Use the toolchains in [the Android README](../README.md), keeping the same signing key:
 
 ```sh
 git apply /path/to/Clarity-Pilot/android/tensor/tensor-support.patch
@@ -24,13 +45,7 @@ cd android
 ./gradlew :app:assembleRelease :app:testDebugUnitTest
 ```
 
-The `tensorDispatch` build task downloads the official LiteRT 2.2.0 runtime ZIP and verifies the selected library's SHA-256. It does not download or distribute the private Tensor SDK compiler. Keep your existing signing key to update an installed app without losing its models/settings.
-
-## Compile a model
-
-Extract the supplied SDK archive locally. The `--sdk` directory must contain `liblitert_plugin_compiler.so`. Use an isolated Python environment with `ai-edge-litert==2.2.0`. Stop Gradle daemons before compiling a large model on a 16 GiB WSL instance; compilation and app builds together exceeded that limit in testing.
-
-Convert the original ONNX using the patched app's own converter, preserving its inputs, outputs, and queue layout:
+The build fetches the official LiteRT 2.2.0 Tensor dispatch library and checks its SHA-256. It does not fetch the private SDK compiler. Extract your SDK locally and use Python with `ai-edge-litert==2.2.0`:
 
 ```sh
 cd JetlinkKit
@@ -38,36 +53,51 @@ swift build --product tensor-convert -c release
 .build/release/tensor-convert /path/to/source.onnx /path/to/converted
 cd ..
 python android/scripts/compile-tensor.py \
-  --source /path/to/source.onnx \
-  --model /path/to/converted/model.tflite \
-  --sdk /path/to/google_tensor_ml_sdk \
-  --output /path/to/tensor-compiled \
-  --soc Tensor_G6 --precision auto
+  --source /path/to/source.onnx --model /path/to/converted/model.tflite \
+  --sdk /path/to/google_tensor_ml_sdk --output /path/to/compiled \
+  --soc Tensor_G6 --precision half --sharding minimal
 ```
 
-Use the actual target SoC; do not relabel a G5 model as G6. The output directory is named after the full ONNX SHA-256 and contains `model.tflite` plus `manifest.json`. The manifest records source/model/SDK hashes, target SoC, runtime version, and precision. Keep a separate output directory for each precision experiment. `--precision auto` reproduces the running candidate above, which failed parity. The script defaults to `half`; `half`, `no_truncation`, and optional `--sharding maximum` remain precision experiments, not validated replacements.
+Use the real target chipset. Automatic precision is an archived failed candidate for this model. The app's converter preserves its model interface; the new byte history preserves the previous queue's inputs exactly, including resets and wraparound. Feature/desire history retains its half-precision rounding.
 
 ## Import into the Pixel
 
-Install the patched APK and open it once so Android creates its app-owned `tensor-models` directory. Copy the two files directly into that directory, naming both with the full source-model SHA-256. Do not create a nested directory with ADB; a shell-owned subdirectory may be inaccessible to the app.
+Install the APK and open it once to create the app-owned `tensor-models` folder. Copy the two compiler outputs directly into it, replacing `SOURCE_SHA256` with the full original ONNX hash above:
 
 ```sh
-adb push /path/to/tensor-compiled/SOURCE_SHA256/model.tflite /sdcard/Android/data/io.zoompilot.jetlink.android/files/tensor-models/SOURCE_SHA256.tflite
-adb push /path/to/tensor-compiled/SOURCE_SHA256/manifest.json /sdcard/Android/data/io.zoompilot.jetlink.android/files/tensor-models/SOURCE_SHA256.json
+adb push /path/to/compiled/SOURCE_SHA256/model.tflite /sdcard/Android/data/io.zoompilot.jetlink.android/files/tensor-models/SOURCE_SHA256.tflite
+adb push /path/to/compiled/SOURCE_SHA256/manifest.json /sdcard/Android/data/io.zoompilot.jetlink.android/files/tensor-models/SOURCE_SHA256.json
 ```
 
-Replace `SOURCE_SHA256` everywhere with the 64-character hash. Select **Settings → Processor → Tensor TPU (desk only)**. In Models select the matching original ONNX model, then prepare it. The compiled file is verified and copied into the private engine cache. An updated compiled hash invalidates the old engine on the next model load; restart the app after importing a replacement.
+Do not create a shell-owned nested folder with ADB. Restart the app after replacing a model. Select **Settings → Processor → Tensor TPU (parked test)**, then prepare Cinque Terre V2. Source/chipset/runtime/compiled-file checks protect imports; a changed compiled hash invalidates the old cache. Other models and compiler settings require their own numerical and timing validation.
 
-The app rejects missing/wrong model identity, chipset, runtime, compiled checksum, or incomplete TPU delegation. It does not silently fall back to CPU or GPU in Tensor mode. CPU/GPU remain explicit processor choices. Qualcomm's Keep NPU Awake option is not applied to Google Tensor.
+## Supervised parked test
 
-## Validation
+The Pixel was left with **Parked USB Test off**. It must be enabled explicitly while present at the car. The switch is not saved across app process restarts and closes after 10 minutes with unchanged server settings. Switching processor closes it. Tensor also rejects normal engine requests and raw inference without the explicit `validation_mode=parked` handshake; ordinary modeld clients remain blocked.
 
-Run `scripts/verify_parity.py` from the patched upstream checkout: capture a bounded set of frames, compute the reference from the unchanged ONNX, then compare using the upstream thresholds. Do not relax tolerances to make a new accelerator pass. Benchmark inference, queue preparation, and full round-trip separately; the protocol's historical `gpu` timing field means accelerator inference even when the selected processor is Tensor TPU.
+1. Keep the car parked with ignition off and Accelerator Link enabled. Attach only the Pixel as the accelerator, using the powered USB 3 hub and data cable described in [Android installation](../README.md).
+2. On the Pixel, select **Tensor TPU (parked test)** and turn on **Parked USB Test**. Accept the USB permission prompt. Do not start a drive.
+3. The script is already staged on the comma at `/data/clarity-tensor-parked-test.py`. From your computer run:
 
-Synthetic desk/TCP validation is separate from a sustained thermal test and a supervised parked comma USB test. The comma and Jetson deployments were not changed by this phone integration.
+   ```sh
+   ssh comma@COMMA_IP '/usr/local/venv/bin/python /data/clarity-tensor-parked-test.py --frames 1200 --output /data/clarity-parked-result.json'
+   ```
+
+   For another installation, copy [parked-test.py](parked-test.py) to that path first. Choose a new result filename for each run.
+4. Review protocol success, negotiated USB speed, round-trip p95/p99/max, and missed 50 ms deadlines. The script refuses ignition-on/camera/model activity, checks offroad state before each inference, and releases the existing daemon's USB loan even on failure. It does not change enable/readiness parameters, start cameras/controls, or send steering commands.
+5. Turn **Parked USB Test off** when finished. A passing synthetic parked result is one transport milestone; camera-input parity, in-mount charging/heat, reconnect behavior, and driving validation remain separate.
+
+The comma was verified reachable and offroad, and its installed loan API was checked. The parked script has been staged and syntax checked, **not executed**.
+
+## Repeat desk validation
+
+Use upstream `scripts/verify_parity.py capture --parked`, followed by `reference` with the original ONNX and `compare`. Only the explicit parked handshake was added; comparison thresholds are unchanged. The patch also makes TCP writes work on Windows sockets without `sendmsg`.
+
+For timing, put the patched upstream checkout on `PYTHONPATH`, create `adb forward tcp:5599 tcp:5599`, and run [benchmark.py](benchmark.py) with the source hash/size, output path, transport label, and optional ADB executable for thermal sampling. Default pacing is 50 ms; `--frames 12000` repeats the soak. The tool stops for non-finite outputs, protocol failure, Android thermal status 3+, or battery temperature 43°C+. Remove forwarding afterward with `adb forward --remove tcp:5599`.
 
 ## References
 
-- [Google Tensor support and supported SoCs](https://developers.google.com/edge/litert/next/tensor-sdk)
-- [Google Tensor compiler precision flags](https://developers.google.com/edge/tensor-sdk/compilation-flags)
-- [Official LiteRT 2.2.0 runtime release](https://github.com/google-ai-edge/LiteRT/releases/tag/v2.2.0)
+- [Google Tensor support](https://developers.google.com/edge/litert/next/tensor-sdk)
+- [Compiler precision and sharding flags](https://developers.google.com/edge/tensor-sdk/compilation-flags)
+- [LiteRT 2.2.0 Tensor performance modes](https://github.com/google-ai-edge/LiteRT/blob/v2.2.0/litert/c/options/litert_google_tensor_options_type.h)
+- [Official LiteRT 2.2.0 release](https://github.com/google-ai-edge/LiteRT/releases/tag/v2.2.0)

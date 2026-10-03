@@ -1,0 +1,419 @@
+{
+  "date_utc": "2026-10-03T17:48:23.178669+00:00",
+  "transport": "Desk USB ADB TCP forwarding",
+  "source_sha256": "09d080f36965bb2a0790500452bd328aa03c484d0222aa79d1ad9f021a522aec",
+  "warmup_frames": 20,
+  "requested_frames": 12000,
+  "period_ms": 50,
+  "backend": "litert",
+  "device": "tensor-Tensor_G6",
+  "measured_frames": 12000,
+  "finite_frames": 12000,
+  "failures": [],
+  "elapsed_s": 612.030999999999,
+  "thermal_samples": [
+    {
+      "elapsed_s": 0.4,
+      "status": 0,
+      "battery_c": 28.3
+    },
+    {
+      "elapsed_s": 10.6,
+      "status": 0,
+      "battery_c": 28.3
+    },
+    {
+      "elapsed_s": 20.8,
+      "status": 0,
+      "battery_c": 28.3
+    },
+    {
+      "elapsed_s": 31.0,
+      "status": 0,
+      "battery_c": 28.3
+    },
+    {
+      "elapsed_s": 41.2,
+      "status": 0,
+      "battery_c": 28.3
+    },
+    {
+      "elapsed_s": 51.3,
+      "status": 0,
+      "battery_c": 28.3
+    },
+    {
+      "elapsed_s": 61.5,
+      "status": 0,
+      "battery_c": 28.3
+    },
+    {
+      "elapsed_s": 71.8,
+      "status": 0,
+      "battery_c": 28.3
+    },
+    {
+      "elapsed_s": 82.0,
+      "status": 0,
+      "battery_c": 29.1
+    },
+    {
+      "elapsed_s": 92.2,
+      "status": 0,
+      "battery_c": 29.1
+    },
+    {
+      "elapsed_s": 102.4,
+      "status": 0,
+      "battery_c": 29.1
+    },
+    {
+      "elapsed_s": 112.5,
+      "status": 0,
+      "battery_c": 29.1
+    },
+    {
+      "elapsed_s": 122.7,
+      "status": 0,
+      "battery_c": 29.1
+    },
+    {
+      "elapsed_s": 132.9,
+      "status": 0,
+      "battery_c": 29.1
+    },
+    {
+      "elapsed_s": 143.1,
+      "status": 0,
+      "battery_c": 29.9
+    },
+    {
+      "elapsed_s": 153.3,
+      "status": 0,
+      "battery_c": 29.9
+    },
+    {
+      "elapsed_s": 163.5,
+      "status": 0,
+      "battery_c": 29.9
+    },
+    {
+      "elapsed_s": 173.8,
+      "status": 0,
+      "battery_c": 29.9
+    },
+    {
+      "elapsed_s": 184.0,
+      "status": 0,
+      "battery_c": 29.9
+    },
+    {
+      "elapsed_s": 194.2,
+      "status": 0,
+      "battery_c": 29.9
+    },
+    {
+      "elapsed_s": 204.4,
+      "status": 0,
+      "battery_c": 30.7
+    },
+    {
+      "elapsed_s": 214.6,
+      "status": 0,
+      "battery_c": 30.8
+    },
+    {
+      "elapsed_s": 224.8,
+      "status": 0,
+      "battery_c": 31.0
+    },
+    {
+      "elapsed_s": 235.0,
+      "status": 0,
+      "battery_c": 31.0
+    },
+    {
+      "elapsed_s": 245.2,
+      "status": 0,
+      "battery_c": 31.0
+    },
+    {
+      "elapsed_s": 255.4,
+      "status": 0,
+      "battery_c": 31.3
+    },
+    {
+      "elapsed_s": 265.6,
+      "status": 0,
+      "battery_c": 31.4
+    },
+    {
+      "elapsed_s": 275.7,
+      "status": 0,
+      "battery_c": 31.4
+    },
+    {
+      "elapsed_s": 285.9,
+      "status": 0,
+      "battery_c": 31.4
+    },
+    {
+      "elapsed_s": 296.1,
+      "status": 0,
+      "battery_c": 31.4
+    },
+    {
+      "elapsed_s": 306.3,
+      "status": 0,
+      "battery_c": 31.4
+    },
+    {
+      "elapsed_s": 316.5,
+      "status": 0,
+      "battery_c": 31.4
+    },
+    {
+      "elapsed_s": 326.7,
+      "status": 0,
+      "battery_c": 32.3
+    },
+    {
+      "elapsed_s": 336.9,
+      "status": 0,
+      "battery_c": 32.1
+    },
+    {
+      "elapsed_s": 347.1,
+      "status": 0,
+      "battery_c": 32.1
+    },
+    {
+      "elapsed_s": 357.3,
+      "status": 0,
+      "battery_c": 32.4
+    },
+    {
+      "elapsed_s": 367.5,
+      "status": 0,
+      "battery_c": 32.4
+    },
+    {
+      "elapsed_s": 377.6,
+      "status": 0,
+      "battery_c": 32.9
+    },
+    {
+      "elapsed_s": 387.8,
+      "status": 0,
+      "battery_c": 32.6
+    },
+    {
+      "elapsed_s": 398.0,
+      "status": 0,
+      "battery_c": 32.8
+    },
+    {
+      "elapsed_s": 408.1,
+      "status": 0,
+      "battery_c": 32.8
+    },
+    {
+      "elapsed_s": 418.3,
+      "status": 0,
+      "battery_c": 33.0
+    },
+    {
+      "elapsed_s": 428.5,
+      "status": 0,
+      "battery_c": 33.0
+    },
+    {
+      "elapsed_s": 438.7,
+      "status": 0,
+      "battery_c": 33.5
+    },
+    {
+      "elapsed_s": 448.9,
+      "status": 0,
+      "battery_c": 33.6
+    },
+    {
+      "elapsed_s": 459.1,
+      "status": 0,
+      "battery_c": 33.6
+    },
+    {
+      "elapsed_s": 469.2,
+      "status": 0,
+      "battery_c": 33.7
+    },
+    {
+      "elapsed_s": 479.4,
+      "status": 0,
+      "battery_c": 33.7
+    },
+    {
+      "elapsed_s": 489.6,
+      "status": 0,
+      "battery_c": 33.7
+    },
+    {
+      "elapsed_s": 499.8,
+      "status": 0,
+      "battery_c": 33.8
+    },
+    {
+      "elapsed_s": 510.0,
+      "status": 0,
+      "battery_c": 33.8
+    },
+    {
+      "elapsed_s": 520.2,
+      "status": 0,
+      "battery_c": 33.8
+    },
+    {
+      "elapsed_s": 530.4,
+      "status": 0,
+      "battery_c": 33.8
+    },
+    {
+      "elapsed_s": 540.6,
+      "status": 0,
+      "battery_c": 34.1
+    },
+    {
+      "elapsed_s": 550.8,
+      "status": 0,
+      "battery_c": 34.1
+    },
+    {
+      "elapsed_s": 561.0,
+      "status": 0,
+      "battery_c": 34.4
+    },
+    {
+      "elapsed_s": 571.1,
+      "status": 0,
+      "battery_c": 34.4
+    },
+    {
+      "elapsed_s": 581.3,
+      "status": 0,
+      "battery_c": 34.4
+    },
+    {
+      "elapsed_s": 591.5,
+      "status": 0,
+      "battery_c": 34.6
+    },
+    {
+      "elapsed_s": 601.7,
+      "status": 0,
+      "battery_c": 34.6
+    },
+    {
+      "elapsed_s": 611.9,
+      "status": 0,
+      "battery_c": 34.6
+    }
+  ],
+  "round_trip": {
+    "mean_ms": 49.749741358320385,
+    "p50_ms": 49.203799999304465,
+    "p95_ms": 54.38872499962599,
+    "p99_ms": 63.75239399956628,
+    "max_ms": 113.94289999952889,
+    "over_50ms": 3943
+  },
+  "inference": {
+    "mean_ms": 33.87776416666667,
+    "p50_ms": 33.787,
+    "p95_ms": 35.46705,
+    "p99_ms": 36.28714,
+    "max_ms": 44.016,
+    "over_50ms": 0
+  },
+  "queues": {
+    "mean_ms": 0.9695176666666666,
+    "p50_ms": 0.989,
+    "p95_ms": 1.4030499999999992,
+    "p99_ms": 1.838,
+    "max_ms": 7.665,
+    "over_50ms": 0
+  },
+  "server_total": {
+    "mean_ms": 34.91634825,
+    "p50_ms": 34.8865,
+    "p95_ms": 36.721,
+    "p99_ms": 37.57202,
+    "max_ms": 44.661,
+    "over_50ms": 0
+  },
+  "blocks_1200": [
+    {
+      "start_frame": 0,
+      "frames": 1200,
+      "round_trip_p95_ms": 54.963579998639034,
+      "server_p95_ms": 36.696349999999995
+    },
+    {
+      "start_frame": 1200,
+      "frames": 1200,
+      "round_trip_p95_ms": 54.18458500153065,
+      "server_p95_ms": 36.696149999999996
+    },
+    {
+      "start_frame": 2400,
+      "frames": 1200,
+      "round_trip_p95_ms": 53.86243499988268,
+      "server_p95_ms": 36.71315
+    },
+    {
+      "start_frame": 3600,
+      "frames": 1200,
+      "round_trip_p95_ms": 56.801064999581286,
+      "server_p95_ms": 36.68705
+    },
+    {
+      "start_frame": 4800,
+      "frames": 1200,
+      "round_trip_p95_ms": 52.75131500029602,
+      "server_p95_ms": 36.585100000000004
+    },
+    {
+      "start_frame": 6000,
+      "frames": 1200,
+      "round_trip_p95_ms": 54.438314999515555,
+      "server_p95_ms": 36.6925
+    },
+    {
+      "start_frame": 7200,
+      "frames": 1200,
+      "round_trip_p95_ms": 54.17368499938675,
+      "server_p95_ms": 36.5782
+    },
+    {
+      "start_frame": 8400,
+      "frames": 1200,
+      "round_trip_p95_ms": 54.54817999943771,
+      "server_p95_ms": 36.65415
+    },
+    {
+      "start_frame": 9600,
+      "frames": 1200,
+      "round_trip_p95_ms": 53.62075999928493,
+      "server_p95_ms": 36.81445
+    },
+    {
+      "start_frame": 10800,
+      "frames": 1200,
+      "round_trip_p95_ms": 54.3088399991575,
+      "server_p95_ms": 36.8783
+    }
+  ],
+  "apk_sha256": "d4b415a53fa0a70fd06d6c2ce0d2a1443fc09c704d75d741c19ac40a5d4af1df",
+  "compiled_sha256": "fc393523c5c1ddba9774382db513a5c62fad50cb187968ea25bc96db5480b51b",
+  "performance_mode": "burst (5)",
+  "workload": "32 synthetic road-like frames, seed 17, cycled with continuing recurrent state"
+}

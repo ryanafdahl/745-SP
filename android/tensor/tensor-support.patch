@@ -51,10 +51,18 @@ index 892e8b6..83b49f6 100644
    int cpu_threads;
    // Where the GPU keeps the programs it compiled between runs, under a key
 diff --git a/JetlinkKit/Sources/CLiteRt/jl_litert.c b/JetlinkKit/Sources/CLiteRt/jl_litert.c
-index d51ae07..5c8972e 100644
+index d51ae07..5cd063e 100644
 --- a/JetlinkKit/Sources/CLiteRt/jl_litert.c
 +++ b/JetlinkKit/Sources/CLiteRt/jl_litert.c
-@@ -181,14 +181,13 @@ char *jl_litert_open(const char *directory) {
+@@ -16,6 +16,7 @@
+ #include "litert/c/litert_model.h"
+ #include "litert/c/litert_opaque_options.h"
+ #include "litert/c/litert_options.h"
++
+ #include "litert/c/litert_tensor_buffer.h"
+ #include "litert/c/litert_tensor_buffer_requirements.h"
+ 
+@@ -181,14 +182,13 @@ char *jl_litert_open(const char *directory) {
    lrt.LiteRtSetMinLoggerSeverity(lrt.LiteRtGetDefaultLogger(), kLiteRtLogSeverityWarning);
  
    // The GPU accelerator is a library of its own, which LiteRT opens from the
@@ -72,7 +80,7 @@ index d51ae07..5c8972e 100644
    n_options++;
    if (named) {
      // kept for the life of the process, as the environment is
-@@ -197,6 +196,10 @@ char *jl_litert_open(const char *directory) {
+@@ -197,6 +197,10 @@ char *jl_litert_open(const char *directory) {
      options[n_options].value.type = kLiteRtAnyTypeString;
      options[n_options].value.str_value = runtime_dir;
      n_options++;
@@ -83,15 +91,22 @@ index d51ae07..5c8972e 100644
    }
    char *error = take(lrt.LiteRtCreateEnvironment(n_options, options, &environment), "LiteRtCreateEnvironment");
    if (error != NULL) {
-@@ -391,7 +394,7 @@ static char *compile(jl_litert_model *m, const char *path, const jl_litert_optio
+@@ -391,8 +395,13 @@ static char *compile(jl_litert_model *m, const char *path, const jl_litert_optio
      return error;
    }
    TRY(LiteRtCreateOptions, &m->options);
 -  TRY(LiteRtSetOptionsHardwareAccelerators, m->options, o->gpu ? kLiteRtHwAcceleratorGpu : kLiteRtHwAcceleratorCpu);
+-  if (o->gpu) {
 +  TRY(LiteRtSetOptionsHardwareAccelerators, m->options, o->npu ? kLiteRtHwAcceleratorNpu : (o->gpu ? kLiteRtHwAcceleratorGpu : kLiteRtHwAcceleratorCpu));
-   if (o->gpu) {
++  if (o->npu) {
++    // LiteRT 2.2.0 GoogleTensorOptions: burst scheduling for a bounded
++    // frame stream. This changes runtime scheduling, never model precision.
++    error = add_toml(m->options, "google_tensor",
++                     format("performance_mode = %d\n", 5 /* Burst in LiteRT 2.2.0 */));
++  } else if (o->gpu) {
      // LrtGetGpuOptionsIdentifier()
      error = add_toml(m->options, "gpu_options", gpu_toml(o));
+   } else if (o->cpu_threads > 0) {
 diff --git a/JetlinkKit/Sources/JetlinkAndroid/Bridge.swift b/JetlinkKit/Sources/JetlinkAndroid/Bridge.swift
 index 9b65a90..64699e4 100644
 --- a/JetlinkKit/Sources/JetlinkAndroid/Bridge.swift
@@ -142,7 +157,7 @@ index 524022b..6538a27 100644
        shim.cpu_threads = Int32(threads)
      }
 diff --git a/JetlinkKit/Sources/JetlinkLiteRT/LiteRtBackend.swift b/JetlinkKit/Sources/JetlinkLiteRT/LiteRtBackend.swift
-index 7c17f79..6fc454f 100644
+index 7c17f79..e38df0a 100644
 --- a/JetlinkKit/Sources/JetlinkLiteRT/LiteRtBackend.swift
 +++ b/JetlinkKit/Sources/JetlinkLiteRT/LiteRtBackend.swift
 @@ -15,10 +15,13 @@ public enum LiteRtProfile: String, CaseIterable, Sendable {
@@ -155,7 +170,7 @@ index 7c17f79..6fc454f 100644
    /// What the log and the benchmark's report call it.
    var label: String {
      switch self {
-+    case .tensor: "Tensor TPU (AOT, desk only)"
++    case .tensor: "Tensor TPU (AOT burst, parked test)"
      case .gpu: "GPU(fp16)"
      case .cpu: "CPU(\(HostChip.cpuThreads) threads)"
      }
@@ -211,7 +226,20 @@ index 7c17f79..6fc454f 100644
      if profile == .gpu {
        let (gpu, names) = try LiteRtRuntime.accelerators()
        guard gpu else {
-@@ -131,6 +145,10 @@ public final class LiteRtBackend: EngineBackend {
+@@ -100,6 +114,12 @@ public final class LiteRtBackend: EngineBackend {
+ 
+   public var runtimeVersion: String { LiteRtRuntime.version }
+ 
++  public func describe() -> [String: String] {
++    var fields = ["backend": name, "runtime_version": runtimeVersion, "device": deviceTag()]
++    if profile == .tensor { fields["validation"] = "parked_only" }
++    return fields
++  }
++
+   public func deviceTag() -> String {
+     sanitize("\(profile.rawValue)-\(chip)")
+   }
+@@ -131,6 +151,10 @@ public final class LiteRtBackend: EngineBackend {
          "LiteRT could not compile the model for the GPU on \(chip) (\(error.description)); LiteRT's log names any op the GPU cannot run, "
            + "and the CPU profile runs every op")
      }
@@ -222,7 +250,7 @@ index 7c17f79..6fc454f 100644
      if profile == .gpu && !engine.fullyAccelerated {
        engine.close()
        throw LiteRtError("LiteRT's GPU on \(chip) cannot run every op of this model; LiteRT's log names them, and the CPU profile runs every op")
-@@ -141,6 +159,10 @@ public final class LiteRtBackend: EngineBackend {
+@@ -141,6 +165,10 @@ public final class LiteRtBackend: EngineBackend {
    // MARK: build
  
    public func build(model: URL, artifact: URL, report: @escaping ProgressFn, metaExtra: [String: Any]) throws {
@@ -233,7 +261,7 @@ index 7c17f79..6fc454f 100644
      let started = Date()
      let expect = Artifact.sidecar(artifact)
      try Artifact.build(artifact, metaExtra: metaExtra, report: report) { staged in
-@@ -182,10 +204,52 @@ public final class LiteRtBackend: EngineBackend {
+@@ -182,10 +210,52 @@ public final class LiteRtBackend: EngineBackend {
      }
    }
  
@@ -333,6 +361,178 @@ index 0000000..7205dd0
 +    return manifest
 +  }
 +}
+diff --git a/JetlinkKit/Sources/JetlinkServer/Queues.swift b/JetlinkKit/Sources/JetlinkServer/Queues.swift
+index 1e42eae..db9b037 100644
+--- a/JetlinkKit/Sources/JetlinkServer/Queues.swift
++++ b/JetlinkKit/Sources/JetlinkServer/Queues.swift
+@@ -104,6 +104,44 @@ final class RingQueue {
+   }
+ }
+ 
++/// Image history stays in its original byte format. All values 0...255 are
++/// exactly representable as half/float, so casting only the sampled rows is
++/// equivalent to RingQueue's half round trip and avoids it for uint8 models.
++final class ImageQueue {
++  let rows: Int
++  let rowCount: Int
++  private let buffer: UnsafeMutablePointer<UInt8>
++  private var head = 0
++
++  init(shape: [Int]) {
++    rows = shape[0]
++    rowCount = shape.dropFirst().reduce(1, *)
++    buffer = .allocate(capacity: rows * rowCount)
++    buffer.initialize(repeating: 0, count: rows * rowCount)
++  }
++
++  deinit { buffer.deallocate() }
++
++  func reset() {
++    buffer.update(repeating: 0, count: rows * rowCount)
++    head = 0
++  }
++
++  func push(u8 source: UnsafeRawPointer) {
++    UnsafeMutableRawPointer(buffer + head * rowCount).copyMemory(from: source, byteCount: rowCount)
++    head = (head + 1) % rows
++  }
++
++  func gather(step: Int, into dest: UnsafeMutableRawPointer, as type: ElementType) {
++    var out = 0
++    for logical in stride(from: 0, to: rows, by: step) {
++      let source = buffer + ((head + logical) % rows) * rowCount
++      Stage.store(u8: source, count: rowCount, into: dest + out * rowCount * type.size, as: type)
++      out += 1
++    }
++  }
++}
++
+ /// A model's server-side history. The Swift form of `queues.PolicyQueues` and
+ /// `queues.StateLoop`: the comma sends only the newest warped frame and the
+ /// packed scalars, and this turns them into the model's inputs, the hidden
+@@ -188,12 +226,13 @@ final class PolicyQueues: FrameStaging {
+   private let frameSkip: Int
+   /// One camera's share of the warped frame.
+   private let cameraBytes: Int
+-  // The queues hold float16, as Python's do, so the cast is paid once per row.
+-  private let imgQueue: RingQueue
+-  private let bigImgQueue: RingQueue
++  // Images retain exact bytes; feature/desire history retains Python's float16 rounding.
++  private let imgQueue: ImageQueue
++  private let bigImgQueue: ImageQueue
+   private let featQueue: RingQueue
+   private let desireQueue: RingQueue
+-  private let gathers: [(queue: RingQueue, target: StagingTarget)]
++  private let imageGathers: [(queue: ImageQueue, target: StagingTarget)]
++  private let features: StagingTarget
+   private let desire: StagingTarget
+   private let scalars: [(offset: Int, count: Int, target: StagingTarget)]
+   private let desireOffset: Int
+@@ -212,12 +251,13 @@ final class PolicyQueues: FrameStaging {
+       throw StagingError.noHiddenState(spec.prevFeatCount)
+     }
+     self.hidden = hidden
+-    imgQueue = RingQueue(shape: spec.imgBufShape)
+-    bigImgQueue = RingQueue(shape: spec.imgBufShape)
++    imgQueue = ImageQueue(shape: spec.imgBufShape)
++    bigImgQueue = ImageQueue(shape: spec.imgBufShape)
+     featQueue = RingQueue(shape: spec.featQShape)
+     desireQueue = RingQueue(shape: spec.desireQShape)
+     let packed = Dictionary(uniqueKeysWithValues: spec.packedLayout.map { ($0.name, $0.range) })
+-    gathers = try [(imgQueue, "img"), (bigImgQueue, "big_img"), (featQueue, "features_buffer")].map { ($0, try StagingTarget(engine, $1)) }
++    imageGathers = try [(imgQueue, "img"), (bigImgQueue, "big_img")].map { ($0, try StagingTarget(engine, $1)) }
++    features = try StagingTarget(engine, "features_buffer")
+     desire = try StagingTarget(engine, "desire_pulse")
+     scalars = try ["traffic_convention", "action_t"].map { name in
+       let target = try StagingTarget(engine, name)
+@@ -233,7 +273,10 @@ final class PolicyQueues: FrameStaging {
+   }
+ 
+   func reset() {
+-    for queue in [imgQueue, bigImgQueue, featQueue, desireQueue] { queue.reset() }
++    imgQueue.reset()
++    bigImgQueue.reset()
++    featQueue.reset()
++    desireQueue.reset()
+     newClient()
+   }
+ 
+@@ -250,16 +293,16 @@ final class PolicyQueues: FrameStaging {
+   }
+ 
+   func stage(warped: UnsafeRawPointer, packed: UnsafeRawPointer) throws {
+-    // push casts into the queue's float16, so the cast costs one row here
+-    // rather than the whole sampled window later
++    // Image bytes are exact; only feature and desire histories round to float16.
+     imgQueue.push(u8: warped)
+     bigImgQueue.push(u8: warped + cameraBytes)
+     desireQueue.push(f32: packed + desireOffset)
+     featQueue.push(f16: prevFeat)
+ 
+-    for gather in gathers {
++    for gather in imageGathers {
+       gather.queue.gather(step: frameSkip, into: gather.target.pointer, as: gather.target.type)
+     }
++    featQueue.gather(step: frameSkip, into: features.pointer, as: features.type)
+     sampleDesire(into: desire.pointer, as: desire.type)
+     for scalar in scalars {
+       Stage.store(f32: packed + scalar.offset, count: scalar.count, into: scalar.target.pointer, as: scalar.target.type)
+diff --git a/JetlinkKit/Sources/JetlinkServer/Session.swift b/JetlinkKit/Sources/JetlinkServer/Session.swift
+index d0376d2..7b3cd05 100644
+--- a/JetlinkKit/Sources/JetlinkServer/Session.swift
++++ b/JetlinkKit/Sources/JetlinkServer/Session.swift
+@@ -9,6 +9,7 @@ import JetlinkRegistry
+ final class Session: @unchecked Sendable {
+   private let transport: any MessageLink
+   private let host: EngineHost
++  private let parkedOnly: Bool
+   private let log = ServerLog(category: "session")
+   private var client = ""
+   /// Has a client said hello on this connection? A comma pinging a session
+@@ -45,6 +46,7 @@ final class Session: @unchecked Sendable {
+     self.transport = transport
+     medium = transport.medium
+     self.host = host
++    parkedOnly = host.backend.describe()["validation"] == "parked_only"
+     outputCapacity = 18_452
+     outputBuffer = .allocate(capacity: outputCapacity)
+     responseHead = .allocate(byteCount: Wire.inferRespSize, alignment: 8)
+@@ -269,6 +271,13 @@ final class Session: @unchecked Sendable {
+       try error(message.seq, "bad_request", "ENGINE_REQ needs sha256 and nbytes")
+       return
+     }
++    // Experimental Tensor engines can only be acquired by the explicit
++    // synthetic parked-test client. A normal modeld request must fail closed.
++    if parkedOnly && d["validation_mode"] as? String != "parked" {
++      self.request = nil
++      try error(message.seq, "parked_only", "Tensor requires the supervised parked-test client")
++      return
++    }
+     let skip = (d["frame_skip"] as? NSNumber)?.intValue ?? ModelConstants.defaultFrameSkip
+     let request = try Request(sha256: sha, nbytes: nbytes, frameSkip: skip)
+     self.request = request
+@@ -276,6 +285,10 @@ final class Session: @unchecked Sendable {
+   }
+ 
+   private func respondEngine(_ seq: UInt32) throws {
++    guard !parkedOnly || request != nil else {
++      try error(seq, "parked_only", "send an explicit parked ENGINE_REQ first")
++      return
++    }
+     let (sha, skip) = wanted()
+     try sendJSON(.engineResp, seq: seq, host.status(sha, frameSkip: skip))
+   }
+@@ -335,6 +348,10 @@ final class Session: @unchecked Sendable {
+   /// the write waits for the comma to read, and nothing else that needs the
+   /// host (status, a build's progress, the control channel) should wait with it.
+   private func onInfer(_ message: Message) throws {
++    guard !parkedOnly || request != nil else {
++      try respond(message.seq, InferReply(status: .notReady))
++      return
++    }
+     let (sha, skip) = wanted()
+     host.lock.lock()
+     guard let loaded = host.loaded, loaded.sha256 == sha, loaded.spec.frameSkip == skip, !host.benchmarking else {
 diff --git a/JetlinkKit/Sources/TensorConvert/main.swift b/JetlinkKit/Sources/TensorConvert/main.swift
 new file mode 100644
 index 0000000..45f8376
@@ -349,6 +549,77 @@ index 0000000..45f8376
 +try FileManager.default.createDirectory(at: output, withIntermediateDirectories: true)
 +let report = try LiteRTPreparation.prepare(source: URL(fileURLWithPath: CommandLine.arguments[1]), into: output)
 +print(report.summary)
+diff --git a/JetlinkKit/Tests/JetlinkServerTests/ImageQueueTests.swift b/JetlinkKit/Tests/JetlinkServerTests/ImageQueueTests.swift
+new file mode 100644
+index 0000000..194ff22
+--- /dev/null
++++ b/JetlinkKit/Tests/JetlinkServerTests/ImageQueueTests.swift
+@@ -0,0 +1,29 @@
++import Foundation
++import Testing
++@testable import JetlinkServer
++
++@Suite("Byte image history")
++struct ImageQueueTests {
++  @Test("Matches half history through wraps and resets for every image value", arguments: [ElementType.uint8, .float16, .float], [1, 2, 4])
++  func matchesOriginal(type: ElementType, step: Int) {
++    let bytes = ImageQueue(shape: [8, 256])
++    let original = RingQueue(shape: [8, 256])
++    let size = (8 / step) * 256 * type.size
++    let actual = UnsafeMutableRawPointer.allocate(byteCount: size, alignment: 16)
++    let expected = UnsafeMutableRawPointer.allocate(byteCount: size, alignment: 16)
++    defer { actual.deallocate(); expected.deallocate() }
++    for frame in 0..<35 {
++      if frame == 0 || frame == 19 { bytes.reset(); original.reset() }
++      if frame != 0 && frame != 19 {
++        let row = (0..<256).map { UInt8(truncatingIfNeeded: $0 + frame) }
++        row.withUnsafeBytes { source in
++          bytes.push(u8: source.baseAddress!)
++          original.push(u8: source.baseAddress!)
++        }
++      }
++      bytes.gather(step: step, into: actual, as: type)
++      original.gather(step: step, into: expected, as: type)
++      #expect(Data(bytes: actual, count: size) == Data(bytes: expected, count: size))
++    }
++  }
++}
+\ No newline at end of file
+diff --git a/JetlinkKit/Tests/JetlinkServerTests/ParkedGateTests.swift b/JetlinkKit/Tests/JetlinkServerTests/ParkedGateTests.swift
+new file mode 100644
+index 0000000..f6d1ad6
+--- /dev/null
++++ b/JetlinkKit/Tests/JetlinkServerTests/ParkedGateTests.swift
+@@ -0,0 +1,28 @@
++import Foundation
++import Testing
++@testable import JetlinkServer
++
++@Suite("Parked Tensor protocol")
++struct ParkedGateTests {
++  @Test("Normal clients cannot acquire an experimental engine or bypass a new hello")
++  func requiresParkedRequest() throws {
++    let backend = FlakyBackend(describing: ["validation": "parked_only"])
++    try serve(backend: backend) { _, client in
++      let hello = try client.hello()
++      #expect(hello["validation"] as? String == "parked_only")
++      let ask: [String: Any] = ["sha256": String(repeating: "a", count: 64), "nbytes": 1, "frame_skip": 4]
++      try client.sendJSON(.engineReq, ask)
++      #expect(try client.recv(.error).json["error"] as? String == "parked_only")
++      try client.sendJSON(.engineReq, ask.merging(["validation_mode": "parked"]) { $1 })
++      #expect(try client.recv(.engineResp).json["state"] as? String == "need_upload")
++      // A subsequent ordinary request revokes the test client's request.
++      try client.sendJSON(.engineReq, ask)
++      #expect(try client.recv(.error).json["error"] as? String == "parked_only")
++      try client.send(.inferReq, Data(count: Wire.inferReqSize))
++      #expect(try client.recv(.inferResp).status == Wire.Status.notReady.rawValue)
++      _ = try client.hello()
++      try client.send(.inferReq, Data(count: Wire.inferReqSize))
++      #expect(try client.recv(.inferResp).status == Wire.Status.notReady.rawValue)
++    }
++  }
++}
+\ No newline at end of file
 diff --git a/JetlinkKit/Tests/JetlinkServerTests/TensorManifestTests.swift b/JetlinkKit/Tests/JetlinkServerTests/TensorManifestTests.swift
 new file mode 100644
 index 0000000..455c12e
@@ -380,7 +651,7 @@ index 0000000..455c12e
 +  }
 +}
 diff --git a/android/app/build.gradle.kts b/android/app/build.gradle.kts
-index 7ce555e..265a773 100644
+index 7ce555e..1088bb4 100644
 --- a/android/app/build.gradle.kts
 +++ b/android/app/build.gradle.kts
 @@ -30,8 +30,8 @@ android {
@@ -389,8 +660,8 @@ index 7ce555e..265a773 100644
          targetSdk = 36
 -        versionCode = jetlinkVersionCode
 -        versionName = jetlinkVersion
-+        versionCode = jetlinkVersionCode + 1
-+        versionName = jetlinkVersion + "-clarity-tensor.1"
++        versionCode = jetlinkVersionCode + 2
++        versionName = jetlinkVersion + "-clarity-tensor.2"
          // The QNN runtime is arm64 only, and so is every Snapdragon with an NPU
          // worth driving on. The emulator on an Apple silicon Mac is arm64 too.
          ndk { abiFilters += "arm64-v8a" }
@@ -420,7 +691,7 @@ index 31bd65a..4c06831 100644
               targeting Android 12 or later must declare. The LiteRT AAR's own
               manifest declares these, but only its libraries are packaged
 diff --git a/android/app/src/main/java/io/zoompilot/jetlink/server/ServerController.kt b/android/app/src/main/java/io/zoompilot/jetlink/server/ServerController.kt
-index 4329e68..8fc99cd 100644
+index 4329e68..eb3a5e2 100644
 --- a/android/app/src/main/java/io/zoompilot/jetlink/server/ServerController.kt
 +++ b/android/app/src/main/java/io/zoompilot/jetlink/server/ServerController.kt
 @@ -90,10 +90,11 @@ class ServerController(private val context: Context, private val scope: Coroutin
@@ -428,7 +699,7 @@ index 4329e68..8fc99cd 100644
          // bench tools reach the server over Wi-Fi or `adb forward`
          put("listen", true)
 -        put("usb", true)
-+        put("usb", settings.processor.allowsUsb)
++        put("usb", settings.processor.allowsUsb || settings.tensorParkedUsb)
          put("preload", true)
          put("chip", Chip.model)
          put("native_library_dir", context.applicationInfo.nativeLibraryDir)
@@ -436,6 +707,21 @@ index 4329e68..8fc99cd 100644
      }
  
      /** Follows the snapshot and the log for as long as the app runs. */
+diff --git a/android/app/src/main/java/io/zoompilot/jetlink/server/ServerService.kt b/android/app/src/main/java/io/zoompilot/jetlink/server/ServerService.kt
+index 86e11b7..50bdd47 100644
+--- a/android/app/src/main/java/io/zoompilot/jetlink/server/ServerService.kt
++++ b/android/app/src/main/java/io/zoompilot/jetlink/server/ServerService.kt
+@@ -76,6 +76,10 @@ class ServerService : LifecycleService() {
+             graph.settings.values.map(::serverSettings).distinctUntilChanged().collectLatest {
+                 graph.server.start(graph.settings.values.value)
+                 withContext(Dispatchers.IO) { graph.usb.connect() }
++                if (graph.settings.values.value.tensorParkedUsb) {
++                    kotlinx.coroutines.delay(10 * 60 * 1000L)
++                    graph.settings.update { it.copy(tensorParkedUsb = false) }
++                }
+             }
+         }
+         lifecycleScope.launch {
 diff --git a/android/app/src/main/java/io/zoompilot/jetlink/settings/Chip.kt b/android/app/src/main/java/io/zoompilot/jetlink/settings/Chip.kt
 index a3fac56..ebc03f7 100644
 --- a/android/app/src/main/java/io/zoompilot/jetlink/settings/Chip.kt
@@ -453,22 +739,23 @@ index a3fac56..ebc03f7 100644
      val isEmulator: Boolean
          get() = Build.HARDWARE.contains("ranchu") || Build.HARDWARE.contains("goldfish") || Build.PRODUCT.contains("sdk")
 diff --git a/android/app/src/main/java/io/zoompilot/jetlink/settings/Settings.kt b/android/app/src/main/java/io/zoompilot/jetlink/settings/Settings.kt
-index 9ddb197..3585e5a 100644
+index 9ddb197..30c5004 100644
 --- a/android/app/src/main/java/io/zoompilot/jetlink/settings/Settings.kt
 +++ b/android/app/src/main/java/io/zoompilot/jetlink/settings/Settings.kt
 @@ -27,10 +27,15 @@ enum class Processor(val backend: Backend, val device: String, val title: String
      /** The whole model on the GPU through LiteRT, which drives any phone's: Adreno, Mali, PowerVR. */
      Gpu(Backend.LiteRt, "gpu", "GPU"),
  
-+    Tensor(Backend.LiteRt, "tensor", "Tensor TPU (desk only)"),
++    Tensor(Backend.LiteRt, "tensor", "Tensor TPU (parked test)"),
 +
      /** The CPU: the emulator and tests. Seconds a frame with a real model. */
      Cpu(Backend.Ort, "cpu", "CPU");
  
-     /** Runs on QNN, which needs a Snapdragon: onnxruntime anywhere but its CPU. */
-+    /** Tensor is desk-only until numerical and timing qualification passes. */
+-    /** Runs on QNN, which needs a Snapdragon: onnxruntime anywhere but its CPU. */
++    /** Tensor USB requires an explicit, non-persistent parked-test switch. */
 +    val allowsUsb: Boolean get() = this != Tensor
 +
++    /** Runs on QNN, which needs a Snapdragon. */
      val usesQnn: Boolean get() = backend == Backend.Ort && device != Cpu.device
  
      companion object {
@@ -485,7 +772,27 @@ index 9ddb197..3585e5a 100644
              else -> listOf(Gpu, Cpu)
          }
      }
-@@ -93,7 +99,7 @@ class Settings(context: Context) {
+@@ -67,6 +73,9 @@ data class SettingsValues(
+     val keepCpuAwake: Boolean = false,
+     /** The screen stays on while Jetlink is on screen. */
+     val keepScreenOn: Boolean = true,
++    /** Never saved: app process restart closes the Tensor attachment window. */
++    val tensorParkedUsb: Boolean = false,
++
+ )
+ 
+ class Settings(context: Context) {
+@@ -75,7 +84,8 @@ class Settings(context: Context) {
+     val values: StateFlow<SettingsValues> = state.asStateFlow()
+ 
+     fun update(change: (SettingsValues) -> SettingsValues) {
+-        val next = change(state.value)
++        val changed = change(state.value)
++        val next = if (changed.processor != state.value.processor) changed.copy(tensorParkedUsb = false) else changed
+         prefs.edit()
+             .putInt(PORT, next.port)
+             .putString(PROCESSOR, next.processor.device)
+@@ -93,7 +103,7 @@ class Settings(context: Context) {
              port = if (port in 1..65535) port else defaults.port,
              // a QNN choice from before a phone without a Snapdragon was told apart
              processor = Processor.of(prefs.getString(PROCESSOR, null))
@@ -495,7 +802,7 @@ index 9ddb197..3585e5a 100644
              keepNpuAwake = prefs.getBoolean(KEEP_NPU_AWAKE, defaults.keepNpuAwake),
              keepCpuAwake = prefs.getBoolean(KEEP_CPU_AWAKE, defaults.keepCpuAwake),
 diff --git a/android/app/src/main/java/io/zoompilot/jetlink/ui/settings/SettingsScreen.kt b/android/app/src/main/java/io/zoompilot/jetlink/ui/settings/SettingsScreen.kt
-index f065256..e028a3a 100644
+index f065256..6fd290e 100644
 --- a/android/app/src/main/java/io/zoompilot/jetlink/ui/settings/SettingsScreen.kt
 +++ b/android/app/src/main/java/io/zoompilot/jetlink/ui/settings/SettingsScreen.kt
 @@ -241,7 +241,9 @@ private fun Performance(values: SettingsValues, info: SettingsInfo, actions: Set
@@ -504,13 +811,28 @@ index f065256..e028a3a 100644
      val choices = info.processors
 -    val footer = if (info.snapdragon) {
 +    val footer = if (Processor.Tensor in choices) {
-+        "Tensor TPU is for desk testing. USB is disabled until output parity and timing are qualified."
++        "Tensor TPU is for a supervised parked test with the car off. The test switch closes after 10 minutes or an app restart."
 +    } else if (info.snapdragon) {
          "Changing the processor prepares models again."
      } else {
          "This phone has no Snapdragon NPU, so the model runs on its GPU. Run Benchmark to see whether it keeps up."
+@@ -272,6 +274,14 @@ private fun Performance(values: SettingsValues, info: SettingsInfo, actions: Set
+                 }
+             }
+         }
++        if (values.processor == Processor.Tensor) {
++            RowDivider()
++            SwitchRow(
++                "Parked USB Test", values.tensorParkedUsb,
++                { on -> actions.update { it.copy(tensorParkedUsb = on) } },
++                supporting = "Use the parked-test script with ignition off. Normal driving clients are blocked.",
++            )
++        }
+         if (values.processor.usesQnn) {
+             RowDivider()
+             SwitchRow(
 diff --git a/android/app/src/test/java/io/zoompilot/jetlink/settings/ProcessorTest.kt b/android/app/src/test/java/io/zoompilot/jetlink/settings/ProcessorTest.kt
-index 6fcd24f..beed83a 100644
+index 6fcd24f..b7caf42 100644
 --- a/android/app/src/test/java/io/zoompilot/jetlink/settings/ProcessorTest.kt
 +++ b/android/app/src/test/java/io/zoompilot/jetlink/settings/ProcessorTest.kt
 @@ -9,7 +9,7 @@ class ProcessorTest {
@@ -522,7 +844,7 @@ index 6fcd24f..beed83a 100644
      }
  
      @Test
-@@ -29,7 +29,21 @@ class ProcessorTest {
+@@ -29,7 +29,27 @@ class ProcessorTest {
      @Test
      fun onlyOnnxruntimesNpuAndGpuChoicesNeedQnn() {
          assertEquals(listOf(Processor.NpuGpu, Processor.Npu), Processor.entries.filter { it.usesQnn })
@@ -542,6 +864,12 @@ index 6fcd24f..beed83a 100644
 +    fun onlyExperimentalTensorDisablesUsb() {
 +        assertEquals(false, Processor.Tensor.allowsUsb)
 +        assertEquals(true, Processor.entries.filter { it != Processor.Tensor }.all { it.allowsUsb })
++    }
++
++    @Test
++    fun tensorUsbNeedsAnExplicitTestWindow() {
++        assertEquals(false, SettingsValues(processor = Processor.Tensor).tensorParkedUsb)
++        assertEquals(false, Processor.Tensor.allowsUsb)
      }
  
      @Test
@@ -609,3 +937,73 @@ index 0000000..0d438f7
 +    out.parent.mkdir(parents=True, exist_ok=True)
 +    out.write_bytes(data)
 +print(out)
+diff --git a/jetlink/transport/tcp.py b/jetlink/transport/tcp.py
+index 43580da..72011e5 100644
+--- a/jetlink/transport/tcp.py
++++ b/jetlink/transport/tcp.py
+@@ -90,7 +90,11 @@ class TcpTransport(StreamTransport):
+     # they go out as one segment train.
+     self._set_timeout(self._write_timeout())
+     try:
+-      return self.sock.sendmsg(bufs)
++      # Windows sockets lack sendmsg. Keep the header and body together;
++      # StreamTransport handles partial sends by advancing the buffers.
++      if hasattr(self.sock, 'sendmsg'):
++        return self.sock.sendmsg(bufs)
++      return self.sock.send(b''.join(bufs))
+     except OSError as e:
+       raise LinkError(f"send failed: {e}") from e
+ 
+diff --git a/scripts/verify_parity.py b/scripts/verify_parity.py
+index 4a5e8c1..441b6da 100644
+--- a/scripts/verify_parity.py
++++ b/scripts/verify_parity.py
+@@ -163,6 +163,16 @@ def capture(args) -> int:
+     hello = client.hello(timeout=60.0)  # the jetson may still be re-enumerating
+     print(f"server: {hello.get('backend', 'trt')} {hello.get('runtime_version', hello.get('trt_version'))} "
+           f"on {hello['device']}")
++    if args.parked:
++      from jetlink import protocol as P
++      if hello.get('validation') != 'parked_only':
++        raise SystemExit('--parked requires a parked-only server')
++      send_json = client.t.send_json
++      def parked_request(kind, seq, data, flags=0):
++        if kind == P.Msg.ENGINE_REQ:
++          data = dict(data, validation_mode='parked')
++        return send_json(kind, seq, data, flags)
++      client.t.send_json = parked_request
+     # a model the server does not have is a build job, not a parity check
+     spec = client.ensure_engine(sha256, nbytes, build_timeout=300.0)
+     # reference and compare need the slices this capture was made with
+@@ -435,6 +445,7 @@ def main() -> int:
+   p.add_argument('--n', type=int, default=32,
+                  help='capture mode: frames; more frames give the correlations more to go on')
+   p.add_argument('--seed', type=int, default=0)
++  p.add_argument('--parked', action='store_true', help='explicit synthetic capture from the parked-only Tensor server')
+   p.add_argument('--onnx', help='reference mode: the ONNX the engine was built from')
+   p.add_argument('--ffs', action='store_true', help='capture mode: this end is the gadget')
+   p.add_argument('--ffs-mount', default='/dev/ffs-jetlink')
+diff --git a/tests/test_tcp_windows.py b/tests/test_tcp_windows.py
+new file mode 100644
+index 0000000..af1a66e
+--- /dev/null
++++ b/tests/test_tcp_windows.py
+@@ -0,0 +1,17 @@
++from jetlink import protocol as P
++from jetlink.transport.tcp import TcpTransport
++
++
++def test_windows_socket_fallback_preserves_framing_across_partial_sends():
++    class SocketWithoutSendmsg:
++        def __init__(self): self.written = bytearray()
++        def setsockopt(self, *args): pass
++        def settimeout(self, timeout): pass
++        def send(self, data):
++            part = data[:3]
++            self.written.extend(part)
++            return len(part)
++    sock = SocketWithoutSendmsg()
++    t = TcpTransport(sock)
++    t.send(P.Msg.STATE_RESP, 12, [b'hello', b' world'], timeout=1)
++    assert bytes(sock.written) == P.pack_header(P.Msg.STATE_RESP, 12, 11, 0) + b'hello world'
+\ No newline at end of file
