@@ -42,14 +42,32 @@ def wait_legacy_release(parked, timeout=15):
     raise RuntimeError('Legacy USB owner did not release the gadget; test refused')
 
 
+def wait_usb_host(client, parked, timeout):
+    if client.t.link_info().get('kind') != 'usb':
+        raise RuntimeError('This test requires direct USB, not a network loan')
+    udc = client.t.bound_udc
+    if not udc: raise RuntimeError('USB controller is not bound')
+    state = Path('/sys/class/udc') / udc / 'state'
+    end = time.monotonic() + timeout
+    print(f'Waiting up to {timeout}s for the Pixel USB connection; accept any phone prompt.', flush=True)
+    while time.monotonic() < end:
+        parked()
+        if state.read_text().strip() == 'configured':
+            return
+        time.sleep(0.2)
+    raise RuntimeError('Pixel did not configure USB within the connection window')
+
+
 def main():
     p = argparse.ArgumentParser(description=__doc__)
     p.add_argument('--frames', type=int, default=1200)
     p.add_argument('--output', type=Path, required=True)
+    p.add_argument('--connect-timeout', type=int, default=60, help='seconds to reconnect USB (10..120)')
     p.add_argument('--legacy-owner', action='store_true',
                    help='temporarily release the older offroad daemon and restore Accelerator Link afterward')
     a = p.parse_args()
     if not 20 <= a.frames <= 2400: p.error('frames must be 20..2400')
+    if not 10 <= a.connect_timeout <= 120: p.error('connect-timeout must be 10..120')
     if a.output.exists(): p.error('output already exists; choose a new filename')
     params = Params()
     def parked():
@@ -63,7 +81,7 @@ def main():
             raise RuntimeError('Camera/model processes are active; test refused')
     def interrupted(*_): raise RuntimeError('Test interrupted or timed out')
     for sig in (signal.SIGINT, signal.SIGTERM, signal.SIGALRM): signal.signal(sig, interrupted)
-    signal.alarm(180)
+    signal.alarm(180 + a.connect_timeout)
     client = loan = None
     restore_link = False
     rows = []
@@ -83,6 +101,8 @@ def main():
             if loan is None: raise RuntimeError('JetLink owner could not lend USB; no settings were changed')
             parked()
             client = JetlinkClient.open_loan(loan, name='clarity-parked-test', want_hidden=True, deadline=2)
+        wait_usb_host(client, parked, a.connect_timeout)
+        report['link'] = client.t.link_info()
         hello = client.hello(timeout=20)
         parked()
         if hello.get('validation') != 'parked_only' or hello.get('device') != 'tensor-Tensor_G6':

@@ -36,7 +36,7 @@ For the parked test, use a powered USB 3 hub with USB-C power pass-through and a
 
 ## Validation and rebuilding
 
-The release build and **54 Android tests** passed, plus 24 native queue/protocol/manifest tests, 57 Python transport tests, and 5 parked-harness tests. A fresh 32-frame parity capture passed on this exact installed APK. The inference implementation completed a 10-minute soak; the final APK adds a parked-only gate and was checked separately for one minute. Full ADB round-trip p95 remained above 50 ms, and direct comma USB timing is pending. See the [evidence and limits](tensor/README.md).
+The release build and **54 Android tests** passed, plus 24 native queue/protocol/manifest tests, 57 Python transport tests, and 16 parked-harness tests. The comma reconnect fix passed 59 isolated daemon tests. A fresh 32-frame parity capture passed on this exact installed APK. The inference implementation completed a 10-minute soak; the final APK adds a parked-only gate and was checked separately for one minute. Full ADB round-trip p95 remained above 50 ms. The subsequent supervised direct comma USB checks passed 120 and 1,200 measured frames. The minute run had round-trip p95 42.80 ms, max 97.39 ms, and 7/1,200 frames above 50 ms; normal driving remains blocked. See the [evidence and limits](tensor/README.md).
 
 After installing the documented toolchains on Linux or macOS:
 

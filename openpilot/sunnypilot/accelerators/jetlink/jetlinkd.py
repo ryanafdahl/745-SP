@@ -165,6 +165,7 @@ class Jetlinkd:
     self.was_attached = False
     self.fetch_failed = False
     self.verified = False   # the server has confirmed the ready param this attach
+    self.parked_only = False  # this peer accepts only the supervised test client
     self.warp_built = False  # tried the comma-side warp this run
     self.warp_thread: threading.Thread | None = None
     self.started = time.monotonic()
@@ -179,6 +180,9 @@ class Jetlinkd:
   def close_link(self) -> None:
     """Always go through this: a FunctionFS owner that exits without closing
     can wedge the driver until a reboot."""
+    if self.parked_only:
+      accelerators.clear_progress()
+    self.parked_only = False
     client, self.client = self.client, None
     if client is not None:
       try:
@@ -308,6 +312,17 @@ class Jetlinkd:
     hello = self.client.hello(timeout=10.0)
     Params().put('JetlinkCachedModels', hello.get('cached_models', []))
     cloudlog.warning("jetlink: server %s trt %s", hello.get('device'), hello.get('trt_version'))
+    if hello.get('validation') == 'parked_only':
+      # This is a capability restriction, not a broken transport. Sending a
+      # normal ENGINE_REQ makes the phone refuse it; reopening then creates a
+      # USB attach edge which resets backoff and repeats the failure forever.
+      # Hold the healthy connection until unplug/disable. The separate parked
+      # harness owns its explicit test handshake and never marks driving ready.
+      self.parked_only = True
+      self.verified = False
+      accelerators.report_progress('parked_test', 0.0, 'connected for parked testing')
+      cloudlog.warning('jetlink: parked-test peer connected; normal provisioning held')
+      return False
     # ask without the file first: the server answers from the sha alone when it
     # has the model, which is every poll of a parked car
     ask = functools.partial(self.client.ensure_engine, sha256, nbytes,
@@ -469,6 +484,9 @@ class Jetlinkd:
     if attached != self.was_attached:
       cloudlog.warning("jetlink: jetson %s", "attached" if attached else "gone")
       self.was_attached = attached
+      if self.parked_only and not attached:
+        accelerators.clear_progress()
+      self.parked_only = False
       if attached:
         # a host that has just arrived gets a clean slate rather than a backoff
         # earned by whatever was on the link before it
@@ -479,7 +497,7 @@ class Jetlinkd:
         # it powered down or rebooted. Readiness is about the engine on the
         # Jetson, which survives; modeld reconnects on its own
         self.ready = False
-    if not attached:
+    if not attached or self.parked_only:
       return
     # provisioning backs off on its own timer, so a long wait for an
     # unresponsive server still watches for one that reappears

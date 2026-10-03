@@ -122,6 +122,57 @@ class TestProvisionCost(unittest.TestCase):
     self.addCleanup(p.stop)
     p.start()
 
+  def test_parked_only_peer_holds_usb_without_engine_requests_or_readiness(self):
+    d = jetlinkd.Jetlinkd()
+    d.client = serving_client()
+    client = d.client
+    client.hello.return_value = {'device': 'tensor-Tensor_G6', 'validation': 'parked_only'}
+    d.started -= jetlinkd.DORMANT_HOLD + 1
+    with mock.patch.object(jetlinkd.helpers, 'enabled', return_value=True), \
+         mock.patch.object(jetlinkd.helpers, 'host_attached', return_value=True), \
+         mock.patch.object(jetlinkd.helpers, 'pending_shutdown', return_value=None), \
+         mock.patch.object(jetlinkd.helpers, 'set_engine_ready') as ready, \
+         mock.patch.object(d, 'tune_vm'), mock.patch.object(d, 'build_warp'):
+      for _ in range(20):
+        d.step()
+    client.hello.assert_called_once()
+    client.ensure_engine.assert_not_called()
+    client.close.assert_not_called()
+    ready.assert_not_called()
+    self.assertEqual(self.cache.stores, 0)
+    self.assertFalse(d.ready)
+    self.assertFalse(d.verified)
+    self.assertFalse(d.dormant)
+    self.assertEqual(d.failures, 0)
+    jetlinkd.accelerators.report_progress.assert_called_with('parked_test', 0.0, 'connected for parked testing')
+
+  def test_unplugged_parked_peer_does_not_block_a_normal_peer(self):
+    d = jetlinkd.Jetlinkd()
+    d.client = serving_client()
+    d.client.hello.side_effect = [{'validation': 'parked_only'}, {'device': 'jetson'}]
+    with mock.patch.object(jetlinkd.helpers, 'enabled', return_value=True), \
+         mock.patch.object(jetlinkd.helpers, 'host_attached', side_effect=[True, False, True]), \
+         mock.patch.object(jetlinkd.helpers, 'pending_shutdown', return_value=None), \
+         mock.patch.object(jetlinkd.helpers, 'set_engine_ready') as ready, \
+         mock.patch.object(d, 'tune_vm'), mock.patch.object(d, 'build_warp'):
+      d.step()
+      self.assertTrue(d.parked_only)
+      d.step()
+      self.assertFalse(d.parked_only)
+      jetlinkd.accelerators.clear_progress.assert_called_once()
+      d.step()
+    d.client.ensure_engine.assert_called_once()
+    ready.assert_called_once_with('deadbeef')
+    self.assertTrue(d.ready)
+
+  def test_closing_a_parked_peer_clears_the_attachment_restriction(self):
+    d = jetlinkd.Jetlinkd()
+    d.client = serving_client()
+    d.parked_only = True
+    d.close_link()
+    self.assertFalse(d.parked_only)
+    jetlinkd.accelerators.clear_progress.assert_called_once()
+
   def test_the_identity_comes_from_the_registry_not_the_file(self):
     d = jetlinkd.Jetlinkd()
     d.client = serving_client()

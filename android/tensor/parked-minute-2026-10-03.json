@@ -1,0 +1,46 @@
+{
+  "source_sha256": "09d080f36965bb2a0790500452bd328aa03c484d0222aa79d1ad9f021a522aec",
+  "transport": "direct comma USB",
+  "driving_ready": false,
+  "requested_frames": 1200,
+  "warmup_frames": 20,
+  "failures": [],
+  "usb_ownership": "legacy exclusive",
+  "link": {
+    "kind": "usb",
+    "usb_speed": "super-speed"
+  },
+  "runtime": "2.2.0",
+  "accelerator_link_restored": true,
+  "measured_frames": 1200,
+  "protocol_pass": true,
+  "round_trip": {
+    "mean_ms": 40.06075386835164,
+    "p95_ms": 42.80246490070567,
+    "p99_ms": 47.25258308166303,
+    "max_ms": 97.38687299977755,
+    "over_50ms": 7
+  },
+  "inference": {
+    "mean_ms": 34.02931,
+    "p95_ms": 35.81205,
+    "p99_ms": 38.537279999999996,
+    "max_ms": 65.413,
+    "over_50ms": 1
+  },
+  "queues": {
+    "mean_ms": 1.0897058333333334,
+    "p95_ms": 2.17825,
+    "p99_ms": 3.83336,
+    "max_ms": 7.383,
+    "over_50ms": 0
+  },
+  "server_total": {
+    "mean_ms": 35.18860083333334,
+    "p95_ms": 37.403749999999995,
+    "p99_ms": 39.74792,
+    "max_ms": 65.98,
+    "over_50ms": 2
+  },
+  "timing_pass": true
+}
