@@ -61,7 +61,7 @@ The comma client is pinned to JetLink **0.8.0**, commit `9f3d3187758b810adc99b06
 
 Protocol v3 keeps recurrent features on the accelerator and transfers only the scalar inputs alongside the warped images. The comma integration uses the new packed layout and preserves full raw predictions when `SEND_RAW_PRED` is enabled. Its existing queued-model catalog and small-model fallback remain in place. The USB gadget setup script is retained in the 745-SP integration because upstream 0.8.0 removed the old setup entry point.
 
-The October 3 update passed 192 isolated accelerator regression tests on the offroad comma and 107 upstream protocol/USB tests. The Jetson 0.8.0 service loaded its existing engine using TensorRT 10.16.2.10; its cache and switched-power setting were preserved. These checks do not replace a parked USB connection test, Android model benchmark/parity checks, or driving validation. The September drive results below describe the older software.
+The October 3 update passed 195 isolated source-integration tests, 164 tests against the installed comma integration, and 107 upstream protocol/USB tests. The Jetson 0.8.0 service loaded its existing engine using TensorRT 10.16.2.10; its cache and switched-power setting were preserved. A staged client on the comma completed a v3 handshake and 21 synthetic inference frames over the desk network, including a full raw-output response. These checks do not replace a parked USB connection test, Android model benchmark/parity checks, or driving validation. The September drive results below describe the older software.
 
 To update an existing Jetson installation while preserving its settings:
 
