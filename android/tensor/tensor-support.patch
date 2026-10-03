@@ -858,7 +858,7 @@ index 0000000..d8f65b7
 +  }
 +}
 diff --git a/android/app/build.gradle.kts b/android/app/build.gradle.kts
-index 7ce555e..2978338 100644
+index 7ce555e..1721960 100644
 --- a/android/app/build.gradle.kts
 +++ b/android/app/build.gradle.kts
 @@ -30,8 +30,8 @@ android {
@@ -867,8 +867,8 @@ index 7ce555e..2978338 100644
          targetSdk = 36
 -        versionCode = jetlinkVersionCode
 -        versionName = jetlinkVersion
-+        versionCode = jetlinkVersionCode + 3
-+        versionName = jetlinkVersion + "-clarity-tensor.3"
++        versionCode = jetlinkVersionCode + 4
++        versionName = jetlinkVersion + "-clarity-tensor.4"
          // The QNN runtime is arm64 only, and so is every Snapdragon with an NPU
          // worth driving on. The emulator on an Apple silicon Mac is arm64 too.
          ndk { abiFilters += "arm64-v8a" }
@@ -1092,7 +1092,7 @@ index 9ddb197..30c5004 100644
              keepNpuAwake = prefs.getBoolean(KEEP_NPU_AWAKE, defaults.keepNpuAwake),
              keepCpuAwake = prefs.getBoolean(KEEP_CPU_AWAKE, defaults.keepCpuAwake),
 diff --git a/android/app/src/main/java/io/zoompilot/jetlink/ui/settings/SettingsScreen.kt b/android/app/src/main/java/io/zoompilot/jetlink/ui/settings/SettingsScreen.kt
-index f065256..6fd290e 100644
+index f065256..1372d0e 100644
 --- a/android/app/src/main/java/io/zoompilot/jetlink/ui/settings/SettingsScreen.kt
 +++ b/android/app/src/main/java/io/zoompilot/jetlink/ui/settings/SettingsScreen.kt
 @@ -241,7 +241,9 @@ private fun Performance(values: SettingsValues, info: SettingsInfo, actions: Set
@@ -1101,7 +1101,7 @@ index f065256..6fd290e 100644
      val choices = info.processors
 -    val footer = if (info.snapdragon) {
 +    val footer = if (Processor.Tensor in choices) {
-+        "Tensor TPU is for a supervised parked test with the car off. The test switch closes after 10 minutes or an app restart."
++        "Tensor TPU is for supervised stationary tests. Follow the guarded script, stay in Park, and set the parking brake. The switch closes after 10 minutes or an app restart."
 +    } else if (info.snapdragon) {
          "Changing the processor prepares models again."
      } else {
@@ -1115,7 +1115,7 @@ index f065256..6fd290e 100644
 +            SwitchRow(
 +                "Parked USB Test", values.tensorParkedUsb,
 +                { on -> actions.update { it.copy(tensorParkedUsb = on) } },
-+                supporting = "Use the parked-test script with ignition off. Normal driving clients are blocked.",
++                supporting = "For ignition-on/A/C testing, arm the script with the car off and wait for its instruction to start the car. Keep controls disengaged. Normal driving clients are blocked.",
 +            )
 +        }
          if (values.processor.usesQnn) {

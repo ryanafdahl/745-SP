@@ -1,13 +1,16 @@
 #!/usr/bin/env python3
-"""Supervised, ignition-off Tensor USB test. Never starts cameras or controls.
+"""Supervised Tensor USB test. Ignition-off by default; --ignition-on pre-arms isolation.
 
 Uses the JetLink loan API by default. --legacy-owner temporarily disables
 Accelerator Link, waits for its older daemon to exit, and restores the setting
-after closing USB. Never changes engine readiness. Run only while at the car.
+after closing USB. --ignition-on must start with the car off, then waits for
+fresh stationary vehicle data after ignition starts. Never changes engine
+readiness or publishes model/control outputs. Run only while at the car.
 """
 import argparse
 import datetime
 import json
+import fcntl
 from pathlib import Path
 import signal
 import sys
@@ -60,6 +63,15 @@ def wait_usb_host(client, parked, timeout):
     raise RuntimeError('Pixel did not configure USB within the connection window')
 
 
+def acquire_test_lock():
+    handle = open('/dev/shm/clarity-pixel-test.lock', 'a')
+    try: fcntl.flock(handle, fcntl.LOCK_EX | fcntl.LOCK_NB)
+    except Exception:
+        handle.close()
+        raise RuntimeError('Another Pixel USB test is already running')
+    return handle
+
+
 def main():
     p = argparse.ArgumentParser(description=__doc__)
     p.add_argument('--frames', type=int, default=1200)
@@ -67,24 +79,44 @@ def main():
     p.add_argument('--connect-timeout', type=int, default=60, help='seconds to reconnect USB (10..120)')
     p.add_argument('--legacy-owner', action='store_true',
                    help='temporarily release the older offroad daemon and restore Accelerator Link afterward')
+    p.add_argument('--ignition-on', action='store_true', help='arm while offroad, then test in Park with ignition/A/C on')
+    p.add_argument('--ignition-timeout', type=int, default=180, help='seconds to start the car and obtain stationary state (30..300)')
     a = p.parse_args()
+    if a.ignition_on and not a.legacy_owner: p.error('--ignition-on requires --legacy-owner for this deployment')
+    if not 30 <= a.ignition_timeout <= 300: p.error('ignition-timeout must be 30..300')
     if not 20 <= a.frames <= 6000: p.error('frames must be 20..6000')
     if not 10 <= a.connect_timeout <= 120: p.error('connect-timeout must be 10..120')
     if a.output.exists(): p.error('output already exists; choose a new filename')
     params = Params()
+    ignition = None
+    if a.ignition_on:
+        from stationary import IgnitionGuard
+        ignition = IgnitionGuard(params)
+        try: ignition.prepare()
+        except BaseException:
+            ignition.close()
+            raise
     def parked():
+        if ignition:
+            ignition.check()
+            return
         if not params.get_bool('IsOffroad'):
             raise RuntimeError('Ignition must stay off; test stopped')
-    parked()
-    if not params.get_bool('JetlinkEnabled'):
-        raise RuntimeError('Enable Accelerator Link while parked before this test')
+    try:
+        parked()
+        if not params.get_bool('JetlinkEnabled'):
+            raise RuntimeError('Enable Accelerator Link while parked before this test')
+    except BaseException:
+        if ignition: ignition.close()
+        raise
     for argv in active_processes():
         if any(Path(v.decode(errors='replace')).name in ('modeld', 'camerad') or v == b'openpilot.selfdrive.modeld.modeld' for v in argv):
+            if ignition: ignition.close()
             raise RuntimeError('Camera/model processes are active; test refused')
     def interrupted(*_): raise RuntimeError('Test interrupted or timed out')
-    for sig in (signal.SIGINT, signal.SIGTERM, signal.SIGALRM): signal.signal(sig, interrupted)
-    signal.alarm(max(180, a.frames // 10) + a.connect_timeout + 60)
-    client = loan = None
+    for sig in (signal.SIGINT, signal.SIGTERM, signal.SIGALRM, signal.SIGHUP): signal.signal(sig, interrupted)
+    signal.alarm(max(180, a.frames // 10) + a.connect_timeout + 60 + (a.ignition_timeout if ignition else 0))
+    client = loan = test_lock = None
     restore_link = False
     rows = []
     samples = []
@@ -92,12 +124,16 @@ def main():
     guard = TimingGuard(direct_usb=True)
     report = {'date_utc':datetime.datetime.now(datetime.timezone.utc).isoformat(), 'source_sha256':SOURCE, 'transport':'direct comma USB', 'driving_ready':False,
               'requested_frames':a.frames, 'warmup_frames':20, 'failures':[],
-              'usb_ownership':'legacy exclusive' if a.legacy_owner else 'loan'}
+              'usb_ownership':'legacy exclusive' if a.legacy_owner else 'loan',
+              'ignition_mode':'on_stationary' if ignition else 'off'}
     try:
+        test_lock = acquire_test_lock()
+        parked()
         if a.legacy_owner:
             restore_link = True
             params.put_bool('JetlinkEnabled', False, block=True)
             wait_legacy_release(parked)
+            if ignition: ignition.require_disabled()
             client = JetlinkClient.open_ffs('/dev/ffs-jetlink',
                 gadget='/sys/kernel/config/usb_gadget/jetlink',
                 name='clarity-parked-test', want_hidden=True, deadline=2)
@@ -106,6 +142,7 @@ def main():
             if loan is None: raise RuntimeError('JetLink owner could not lend USB; no settings were changed')
             parked()
             client = JetlinkClient.open_loan(loan, name='clarity-parked-test', want_hidden=True, deadline=2)
+        if ignition: ignition.wait_until_ready(a.ignition_timeout)
         wait_usb_host(client, parked, a.connect_timeout)
         report['link'] = client.t.link_info()
         hello = client.hello(timeout=20)
@@ -114,6 +151,8 @@ def main():
             raise RuntimeError('Expected the Tensor G6 parked-only app; peer did not match')
         report['runtime'] = hello.get('runtime_version')
         report['link'] = client.t.link_info()
+        if report['link'].get('usb_speed') not in ('super-speed', 'super-speed-plus'):
+            raise RuntimeError('USB SuperSpeed is required for this validation')
         samples.append(dict(first_health(client), elapsed_s=round(time.monotonic()-started,3)))
         parked()
         send_json = client.t.send_json
@@ -136,8 +175,9 @@ def main():
             time.sleep(max(0,due-time.monotonic()))
             parked()
             start = time.monotonic()
-            out = client.infer(warped,packed,frame_id=i,reset=(i==0),want_state=True)
+            out = client.infer(warped,packed,frame_id=i,reset=(i==0),want_state=True,deadline=0.2 if ignition else None)
             elapsed=(time.monotonic()-start)*1000
+            parked()
             if not np.isfinite(out).all(): raise RuntimeError('Non-finite output')
             health = device_health(client.last_state)
             if i % 20 == 0: samples.append(dict(health, elapsed_s=round(time.monotonic()-started,3), frame=i))
@@ -158,6 +198,11 @@ def main():
             if resource:
                 try: resource.close()
                 except Exception as e: report['failures'].append(f'Cleanup: {e}')
+        if ignition:
+            try: report['vehicle_gate'] = ignition.summary()
+            except Exception as e: report['failures'].append(f'Vehicle summary: {e}')
+            try: ignition.close()
+            except Exception as e: report['failures'].append(f'Vehicle monitor cleanup: {e}')
         if restore_link:
             try:
                 params.put_bool('JetlinkEnabled', True, block=True)
@@ -165,6 +210,9 @@ def main():
                 if not report['accelerator_link_restored']:
                     raise RuntimeError('Accelerator Link did not restore')
             except Exception as e: report['failures'].append(f'Restore: {e}')
+        if test_lock:
+            try: test_lock.close()
+            except Exception as e: report['failures'].append(f'Test lock cleanup: {e}')
         report['elapsed_s']=round(time.monotonic()-started,3)
         report['thermal_samples']=samples
         report['blocks_100']=guard.blocks
@@ -182,6 +230,7 @@ def main():
         a.output.write_text(json.dumps(report,indent=2)+'\n')
         print(json.dumps(report,indent=2),flush=True)
         print('USB test ended. Turn off Parked USB Test on the Pixel. Driving remains blocked.',flush=True)
+        if ignition: print('Turn ignition off before another test or normal use; modeld keeps its small-model startup choice for this ignition cycle.',flush=True)
     return 0 if report['protocol_pass'] and report.get('timing_pass') else 1
 
 

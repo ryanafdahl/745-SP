@@ -1,0 +1,70 @@
+{
+  "status": "prepared_for_supervised_stationary_test",
+  "physical_ignition_on_test_run": false,
+  "driving_ready": false,
+  "apk": {
+    "apk_sha256": "aef63a15da83f168b79bca04196c447214e07b6e96fa8357f8d287357d7e472b",
+    "apk_bytes": 103525680,
+    "installed_hash_verified": true,
+    "version_name": "0.8.0-clarity-tensor.4",
+    "version_code": 804,
+    "changes_since_803": [
+      "version metadata",
+      "stationary ignition-on instructions"
+    ],
+    "inference_implementation_changed": false
+  },
+  "validation": {
+    "android_unit_tests": {
+      "passed": 54,
+      "failed": 0
+    },
+    "python_guard_tests": {
+      "passed": 50,
+      "failed": 0
+    },
+    "release_build": "passed",
+    "upstream_patch_apply": "passed",
+    "upstream_revision": "9f3d3187758b810adc99b06cc0a1a19ab73b7acb",
+    "post_install_desk_runtime_check": {
+      "status": "not_run",
+      "reason": "Pixel disconnected from desktop ADB after install/hash verification; no inference frames were sent"
+    },
+    "previous_803_runtime_evidence": "health-validation-2026-10-03.json"
+  },
+  "comma": {
+    "preflight": {
+      "deployment": "5c76b6b9ff17f94b4f0b7b76d507c39197f558e1",
+      "raw_ignition_off": true,
+      "camera_model_processes_absent": true
+    },
+    "params_before": {
+      "IsOffroad": true,
+      "JetlinkEnabled": true,
+      "JetlinkEngineReady": false
+    },
+    "params_after": {
+      "IsOffroad": true,
+      "JetlinkEnabled": true,
+      "JetlinkEngineReady": false
+    },
+    "sha256": {
+      "parked-test.py": "13c95428694e6c4645a1445ce5a0d2dbea0279f3aa7eb00e725595a07f0c0fa6",
+      "validation.py": "cc750421c20e4306aa8798d10e45897df1ac993cd4b8e0e9a7cc231200fecfda",
+      "stationary.py": "849a479277bd72556c63ac5fbd041c60eff5577b4dbeb2442c23b206f02cffba",
+      "ignition-on-manifest.json": "f1a9bea962f48008f742f43dc64bfc3bf785a3299afcce6c71406475b8123ec5"
+    },
+    "armed": false,
+    "checked_at_utc": "2026-10-03T21:56:33.666462+00:00",
+    "staged_directory": "/data/clarity-tensor-validation-804"
+  },
+  "planned_first_run": {
+    "measured_frames": 120,
+    "warmup_frames": 20,
+    "ignition_mode": "on_stationary",
+    "arm_while_ignition_off": true,
+    "requires_operator_present": true,
+    "usb_speed": "super-speed"
+  },
+  "published_patch_sha256": "abab24bf0c3a180c84259bd719d5df4f08cc5a0bf6d2cab024aa6c7e412409f0"
+}

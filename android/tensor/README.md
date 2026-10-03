@@ -1,6 +1,6 @@
 # Google Tensor TPU support
 
-**The 2,400-frame parked USB run failed sustained timing after shorter 120- and 1,200-frame passes. Driving remains blocked in Tensor mode.** The Pixel runs Cinque Terre V2 on Tensor G6 using LiteRT 2.2.0 and the locally supplied Google Tensor SDK. The installed app is `0.8.0-clarity-tensor.3` (code 803), adding phone telemetry and automatic test stops. The failed hot-car run used the archived `.2` build.
+**The 2,400-frame parked USB run failed sustained timing after shorter 120- and 1,200-frame passes. Driving remains blocked in Tensor mode.** The Pixel runs Cinque Terre V2 on Tensor G6 using LiteRT 2.2.0 and the locally supplied Google Tensor SDK. The installed app is `0.8.0-clarity-tensor.4` (code 804), with instructions for the new stationary ignition-on/A/C harness. Phone telemetry and automatic test stops were added in `.3`; `.4` retains that inference implementation unchanged. The failed hot-car run used the archived `.2` build.
 
 ## Driving-test preparation
 
@@ -11,12 +11,36 @@ The updated harness requests health alongside each frame, saves samples about on
 A new driving test remains pending the following evidence, in order:
 
 1. Repeat direct USB with the final APK and intended powered hub/cable, first 120, then 1,200, then up to 6,000 measured frames. Require fresh phone telemetry, SuperSpeed, finite outputs, every completed 100-frame p95 below 50 ms, and no exchange reaching 100 ms. Retain the earlier failures alongside new results.
-2. Validate cooling/charging in the intended mount and repeat unplug/reconnect. Do not repeat a hot, uncomfortable car session just to collect data. The current comma harness still requires ignition off; an engine-on/A/C test needs separate USB ownership isolation and live Park/zero-speed/disengagement checks before it can be supported. Disabling Accelerator Link alone does not prove that an already-running modeld released USB.
+2. Validate cooling/charging in the intended mount and repeat unplug/reconnect. Do not repeat a hot, uncomfortable car session just to collect data. The new ignition-on harness below isolates USB before modeld starts, then requires live Park/zero-speed/disengagement checks. Its code and read-only preflight are tested; the physical ignition-on run remains pending. Disabling Accelerator Link does not release USB from an already-running modeld, so arming after ignition starts is refused.
 3. Validate camera-derived inputs and model outputs, and verify the installed modeld's timeout/disconnect fallback with controls disengaged before considering a supervised drive. Synthetic numerical parity and desk timing do not establish driving quality.
 
 The new APK and guarded scripts are preparation for those checks. No driving enable flag or vehicle-control behavior was changed, and no powered-on test was started.
 
-## Indoor check of the installed `.3` build
+## Stationary ignition-on/A/C test
+
+**Prepared, not yet physically validated.** The `.4` APK is installed with its on-device SHA-256 verified. The release build passed 54 Android tests; the harness passed 50 Python tests covering stale/invalid state, each wheel speed, engagement, model selection, startup isolation, USB ownership and cleanup/restoration. A read-only preflight on the comma verified fresh ignition-off state, absent camera/model processes, and the pinned deployment. Settings were identical before and after, and no test window was armed. The Pixel disconnected from desktop ADB after installation/hash verification, so no new `.4` desk inference result is claimed; the unchanged inference implementation retains the `.3` evidence below. [Preparation evidence](ignition-preparation-2026-10-03.json).
+
+The guard is deliberately tied to deployed commit `5c76b6b9ff17f94b4f0b7b76d507c39197f558e1` and the startup-file hashes in [ignition-on-manifest.json](ignition-on-manifest.json). A changed deployment refuses to arm until that code is reviewed again. Start with the engine off: the script disables Accelerator Link before modeld starts, waits for the offroad USB owner to release it, verifies startup sees the disabled setting and takes exclusive test ownership. Once the engine starts, normal modeld runs the small model for that ignition cycle. The script never publishes its synthetic outputs into the driving pipeline, writes CAN messages or changes control software.
+
+1. While present at the car, leave **ignition off**, select **Park**, set the **parking brake**, and leave the Pixel's USB cable disconnected from the comma. Keep Accelerator Link enabled initially; the script manages its temporary release. Use the intended powered USB 3 hub/cable and cooling arrangement.
+2. Start the staged script from the computer. Use a fresh output filename for every attempt:
+
+   ```sh
+   ssh comma@COMMA_IP '/usr/local/venv/bin/python /data/clarity-tensor-validation-804/parked-test.py --legacy-owner --ignition-on --frames 120 --ignition-timeout 180 --connect-timeout 120 --output /data/clarity-ignition-short-01.json'
+   ```
+
+3. **Wait for `USB ISOLATED` before starting the engine.** Then turn the car on for A/C, remain in Park with the parking brake set, and keep controls disengaged. The script waits for two continuous seconds of fresh stationary data and small-model output. It does not require anyone to sit in a hot car with the ignition off for the benchmark.
+4. After `Live vehicle checks passed`, select **Tensor TPU (parked test)** on the Pixel, enable **Parked USB Test**, connect its USB cable and accept any USB permission prompt. SuperSpeed is required. A timeout ends the attempt and restores the setting; do not keep reconnecting after it ends.
+5. The initial run measures 120 frames after 20 warmups. Review vehicle/phone telemetry, full-exchange timing and any failure before trying 1,200 frames, then up to 6,000. **Each new run must be armed with ignition off again.** Do not engage controls or leave Park during any test.
+6. At completion, turn **Parked USB Test off**, disconnect the Pixel and **turn ignition off before another test or normal use**. The script restores Accelerator Link, but modeld keeps its small-model startup choice until that ignition cycle ends.
+
+The vehicle watcher reads every 50 ms and latches a failed condition so a brief unsafe reading cannot silently recover. Active testing requires Park, parking brake, standstill, both ego-speed estimates and all four wheel speeds within 0.01 m/s of zero, disengaged selfdrive, inactive lateral/longitudinal controls, all panda control-permission bits false, and `modelV2.big=false`. Fast messages must be less than 0.5 seconds old; ignition/device messages less than 1.5 seconds old; the watcher heartbeat less than 0.25 seconds old. Missing/invalid/stale data refuses or stops the test. Each inference has a 0.2-second transport deadline, with stricter measured timing stops below. Vehicle gating does not prevent a person from operating the car: the operator must remain stationary and disengaged.
+
+Phone thermal status 3+, battery temperature 43°C+, missing/stale health, non-finite outputs, any measured exchange/server time reaching 100 ms, or a 100-frame p95 reaching 50 ms stops the run. USB and the temporary enable setting are cleaned up on normal completion, exceptions, interrupt, termination, hangup or the overall timeout. A power loss or SIGKILL cannot run cleanup: after such an interruption, keep ignition off, verify no test process remains, and re-enable Accelerator Link in the comma settings before normal use. Engine readiness is never fabricated by the harness.
+
+For another copy of this same audited deployment, stage [parked-test.py](parked-test.py), [validation.py](validation.py), [stationary.py](stationary.py) and [ignition-on-manifest.json](ignition-on-manifest.json) together. Running `stationary.py` alone performs only a read-only offroad preflight. Do not replace the manifest with arbitrary current hashes to bypass its review requirement.
+
+## Indoor check of the archived `.3` build
 
 The new APK completed **6,000 measured frames plus 20 warmups in 308.86 seconds**, using desk USB ADB forwarding. All outputs were finite, with no protocol, health or timing-stop errors. Phone/server p95 was **36.85 ms**, maximum **43.22 ms**, and **0/6,000** server samples exceeded 50 ms. Inference p95 was **35.52 ms**, maximum **40.93 ms**. All **60** consecutive 100-frame phone timing blocks passed; the worst block p95 was **37.87 ms**.
 
@@ -115,20 +139,20 @@ adb push /path/to/compiled/SOURCE_SHA256/manifest.json /sdcard/Android/data/io.z
 
 Do not create a shell-owned nested folder with ADB. Restart the app after replacing a model. Select **Settings → Processor → Tensor TPU (parked test)**, then prepare Cinque Terre V2. Source/chipset/runtime/compiled-file checks protect imports; a changed compiled hash invalidates the old cache. Other models and compiler settings require their own numerical and timing validation.
 
-## Supervised parked test
+## Supervised ignition-off parked test
 
 **Parked USB Test** defaults to off and must be enabled explicitly while present at the car; turn it off after each supervised session. The switch is not saved across app process restarts and closes after 10 minutes with unchanged server settings. Switching processor closes it. Tensor also rejects normal engine requests and raw inference without the explicit `validation_mode=parked` handshake; ordinary modeld clients remain blocked.
 
 1. Keep the car parked with ignition off and Accelerator Link enabled. Attach only the Pixel as the accelerator, using the powered USB 3 hub and data cable described in [Android installation](../README.md).
 2. On the Pixel, select **Tensor TPU (parked test)** and turn on **Parked USB Test**. Accept the USB permission prompt. Do not start a drive.
-3. The script is already staged on the comma at `/data/clarity-tensor-validation-803/parked-test.py`. From your computer run:
+3. The script is already staged on the comma at `/data/clarity-tensor-validation-804/parked-test.py`. From your computer run:
 
    ```sh
-   ssh comma@COMMA_IP '/usr/local/venv/bin/python /data/clarity-tensor-validation-803/parked-test.py --legacy-owner --frames 120 --output /data/clarity-parked-brief.json'
+   ssh comma@COMMA_IP '/usr/local/venv/bin/python /data/clarity-tensor-validation-804/parked-test.py --legacy-owner --frames 120 --output /data/clarity-parked-brief.json'
    ```
 
    For another installation, copy [parked-test.py](parked-test.py) and [validation.py](validation.py) into the same directory first. Choose a new result filename for each run. Start with 120 measured frames; repeat with `--frames 1200` only after a clean short check. `--legacy-owner` matches this comma's installed offroad daemon: it temporarily disables Accelerator Link, waits for the daemon to exit and USB to unbind, then opens the interface exclusively. It closes USB and restores Accelerator Link afterward, including on failure. A USB prompt or one deliberate reconnect during this ownership handoff is separate from repeated connect/disconnect cycling. On newer installations whose daemon exposes `/dev/shm/jetlink-lend.sock`, omit this flag to borrow the existing owner's endpoints without changing settings.
-4. Review protocol success, negotiated USB speed, round-trip p95/p99/max, and missed 50 ms deadlines. The script refuses ignition-on/camera/model activity, checks offroad state before each inference, and releases USB even on failure. Legacy ownership temporarily changes only the enable setting; engine readiness is never written by the harness. It does not start cameras/controls or send steering commands.
+4. Review protocol success, negotiated USB speed, round-trip p95/p99/max, and missed 50 ms deadlines. Without `--ignition-on`, the script refuses ignition-on/camera/model activity, checks offroad state before each inference, and releases USB even on failure. Legacy ownership temporarily changes only the enable setting; engine readiness is never written by the harness. It does not start cameras/controls or send steering commands.
 5. Turn **Parked USB Test off** when finished. A passing synthetic parked result is one transport milestone; camera-input parity, in-mount charging/heat, reconnect behavior, and driving validation remain separate.
 
 The installed comma daemon uses exclusive USB ownership rather than the newer loan service. The harness supports both methods and waits up to 60 seconds for USB to configure before sending HELLO (`--connect-timeout`, 10–120 seconds). It refuses a network loan so the report cannot mislabel TCP results as direct USB.
@@ -141,7 +165,7 @@ After installing that fix, the phone negotiated SuperSpeed and all three supervi
 
 Use upstream `scripts/verify_parity.py capture --parked`, followed by `reference` with the original ONNX and `compare`. Only the explicit parked handshake was added; comparison thresholds are unchanged. The patch also makes TCP writes work on Windows sockets without `sendmsg`.
 
-For timing, put the patched upstream checkout on `PYTHONPATH`, create `adb forward tcp:5599 tcp:5599`, and run [benchmark.py](benchmark.py) with the source hash/size, output path, transport label, and optional ADB executable for thermal sampling. Default pacing is 50 ms; `--frames 12000` repeats the soak. Both harnesses now require the `.3` app health telemetry and the adjacent [validation.py](validation.py) module. The tool stops for non-finite outputs, protocol failure, stale/missing health, Android thermal status 3+, battery temperature 43°C+, or the windowed phone timing limits above. Remove forwarding afterward with `adb forward --remove tcp:5599`.
+For timing, put the patched upstream checkout on `PYTHONPATH`, create `adb forward tcp:5599 tcp:5599`, and run [benchmark.py](benchmark.py) with the source hash/size, output path, transport label, and optional ADB executable for thermal sampling. Default pacing is 50 ms; `--frames 12000` repeats the soak. Both harnesses require the `.3` or later app health telemetry and the adjacent [validation.py](validation.py) module. The tool stops for non-finite outputs, protocol failure, stale/missing health, Android thermal status 3+, battery temperature 43°C+, or the windowed phone timing limits above. Remove forwarding afterward with `adb forward --remove tcp:5599`.
 
 ## References
 
