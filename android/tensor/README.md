@@ -1,10 +1,10 @@
 # Google Tensor TPU support
 
-**Supervised synthetic parked USB checks passed: 120 frames, then 1,200 frames. Driving remains blocked in Tensor mode.** The Pixel runs Cinque Terre V2 on Tensor G6 using LiteRT 2.2.0 and the locally supplied Google Tensor SDK. The installed app is `0.8.0-clarity-tensor.2` (code 802).
+**The 2,400-frame parked USB run failed sustained timing after shorter 120- and 1,200-frame passes. Driving remains blocked in Tensor mode.** The Pixel runs Cinque Terre V2 on Tensor G6 using LiteRT 2.2.0 and the locally supplied Google Tensor SDK. The installed app is `0.8.0-clarity-tensor.2` (code 802).
 
 ## Results on October 3, 2026
 
-Explicit FP16 compilation fixed the earlier plan-output mismatch. Image history now retains bytes instead of converting bytes to half precision and back. Tensor runtime burst mode supplies the latency margin measured in the desk and parked USB tests. The original ONNX model, output interpretation, and numerical acceptance thresholds are unchanged.
+Explicit FP16 compilation fixed the earlier plan-output mismatch. Image history now retains bytes instead of converting bytes to half precision and back. Tensor runtime burst mode improved the desk and short parked tests, but did not sustain the required timing in the later 2,400-frame parked run. The original ONNX model, output interpretation, and numerical acceptance thresholds are unchanged.
 
 | Short desk comparison | Inference mean | Inference p95 | Queue mean | Server p95 |
 | --- | ---: | ---: | ---: | ---: |
@@ -33,10 +33,15 @@ Ignition remained off. Each run used 20 warmup frames, deterministic synthetic i
 | --- | ---: | ---: | ---: | ---: | ---: |
 | [Short: 120 frames](parked-short-2026-10-03.json) | 39.49 ms | 41.84 ms | 43.16 ms | 55.58 ms | 1 / 120 |
 | [One minute: 1,200 frames](parked-minute-2026-10-03.json) | 40.06 ms | 42.80 ms | 47.25 ms | 97.39 ms | 7 / 1,200 |
+| [Extended: 2,400 frames](parked-extended-2026-10-03.json) | 53.41 ms | **98.86 ms** | 102.32 ms | **109.68 ms** | **876 / 2,400** |
 
-Both passed the predeclared synthetic gate: every requested frame completed with finite outputs and no protocol errors, round-trip p95 below 50 ms, and maximum below 100 ms. This is not an every-frame deadline pass: the minute run missed 50 ms on 0.58% of frames, and its worst case was close to the 100 ms limit. On that run, TPU inference mean was 34.03 ms, p95 35.81 ms, and max 65.41 ms; server-total p95 was 37.40 ms and max 65.98 ms.
+The first two runs passed the predeclared synthetic gate: every requested frame completed with finite outputs and no protocol errors, round-trip p95 below 50 ms, and maximum below 100 ms. This is not an every-frame deadline pass: the minute run missed 50 ms on 0.58% of frames, and its worst case was close to the 100 ms limit. On that run, TPU inference mean was 34.03 ms, p95 35.81 ms, and max 65.41 ms; server-total p95 was 37.40 ms and max 65.98 ms.
 
-This establishes a short direct-USB transport milestone, not driving readiness. Camera-input numerical checks, sustained charging/temperature testing in the intended mount, repeated physical reconnects, and driving validation remain open. Phone thermal telemetry was not collected during these direct-USB runs. Normal driving requests remain refused in Tensor mode.
+The extended run completed all 2,400 requested frames with finite outputs and no protocol errors, but **failed the same timing gate**: p95 exceeded 50 ms and maximum exceeded 100 ms. **36.5%** of exchanges missed 50 ms. TPU inference itself reached p95 **92.22 ms** (max **99.17 ms**); queue p95 stayed **2.38 ms** and server-total p95 was **93.29 ms**. The observed slowdown is in phone-side inference rather than merely transport overhead. Live frame logs showed inference rising from roughly 34 ms to sustained 65–95 ms. A stop was requested after observing this, but the run had already completed; the report is a completed timing failure, not an interrupted sample.
+
+The user confirmed the car was fully off and the Pixel had cooled before this run. Both raw ignition signals were read as false, with valid/live panda and device-state messages, during the connection window. The test was planned for two minutes at 20 Hz; slower exchanges extend that duration, and this harness revision did not record exact elapsed time. Accelerator Link was restored and no test process remained afterward. No Pixel temperature or charging samples were obtained, so thermal throttling is a hypothesis, not a confirmed cause. Temperature, thermal status, charging state, and per-window timings are needed during a controlled repeat before further performance tuning.
+
+The short passes establish USB functionality, while the extended failure leaves sustained readiness unresolved. Camera-input numerical checks, sustained charging/temperature testing in the intended mount, repeated physical reconnects, and driving validation remain open. Phone thermal telemetry was not collected during these direct-USB runs. Normal driving requests remain refused in Tensor mode.
 
 ## Exact model and compiler
 
@@ -104,7 +109,7 @@ The installed comma daemon uses exclusive USB ownership rather than the newer lo
 
 The first two attempts completed zero inference frames: [no reader before the write watchdog](parked-connection-2026-10-03.json), then [no host configured before the transport timeout](parked-connection-second-2026-10-03.json). Live logs also exposed the repeated connect/disconnect: ordinary provisioning sent ENGINE_REQ to a parked-only peer, its refusal caused an unbind/rebind, and the resulting attach edge reset the retry delay. The daemon now recognizes `validation=parked_only` in HELLO, holds USB, displays “connected for parked testing,” and makes no normal engine request. It does not mark the peer ready for driving. Unplugging or disabling clears this attachment restriction, so a subsequent Jetson can provision normally.
 
-After installing that fix, the phone negotiated SuperSpeed and both supervised tests below completed. Accelerator Link was restored after each run. The phone APK and model were unchanged.
+After installing that fix, the phone negotiated SuperSpeed and all three supervised USB runs completed. The short runs passed timing; the extended run failed timing as detailed above. Accelerator Link was restored after each run. The phone APK and model were unchanged.
 
 ## Repeat desk validation
 
