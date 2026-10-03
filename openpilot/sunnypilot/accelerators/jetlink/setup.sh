@@ -30,6 +30,6 @@ fi
 
 # the endpoints must exist before jetlinkd or modeld can open them, and that
 # needs root. setup_gadget.sh leaves the reason in $STATUS for the offroad alert
-sudo -n bash "$REPO/scripts/setup_gadget.sh" >/dev/null ||
+sudo -n bash "$(dirname "$0")/setup_gadget.sh" >/dev/null ||
   echo "jetlink: USB gadget setup failed" >&2
 exit 0

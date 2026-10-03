@@ -83,9 +83,8 @@ class JetlinkModelState(ModelStateBase):
     # compile_modeld.make_input_queues' packed_npy_inputs, minus the GPU queues
     # the server owns
     self.packed = np.zeros(spec.packed_nelem, dtype=np.float32)
-    views = np.split(self.packed, np.cumsum(spec.packed_sizes[:-1]))
-    self.npy.update({k: v.reshape(s) for (k, s), v in
-                     zip(spec.packed_shapes.items(), views, strict=True)})
+    self.npy.update({k: self.packed[indices].reshape(shape)
+                     for k, (indices, shape) in spec.packed_layout.items()})
 
     # read once: it must be the device the cached JIT was compiled against
     self.warp_dev = Device.DEFAULT
@@ -163,7 +162,9 @@ class JetlinkModelState(ModelStateBase):
     # the non-finite check runs on the server (Status.NOT_FINITE -> LinkError),
     # so modeld's big->small failover fires as it does for a chestnut
     outputs_dict = self.parser.parse_outputs(self.slice_outputs(model_output, self.output_slices))
-    self.npy['prev_feat'][:] = model_output[self.output_slices['hidden_state']]
+    # Protocol v3 keeps recurrent features on the server. Its client restores
+    # the full output layout for the parser and requests hidden state only
+    # when SEND_RAW_PRED is enabled; no features are sent back next frame.
     if SEND_RAW_PRED:
       outputs_dict['raw_pred'] = model_output.copy()
     return outputs_dict

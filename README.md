@@ -57,7 +57,19 @@ Interrupted first-install small-model downloads retry while parked. Explicitly c
 
 The September 26 drive used the previously selected **Cinque Terre Model, September 4, 2026**, not V2. Its model selection was preserved during the Jetson update. Most models in this repository's JetLink catalog are about 766 MB before engine preparation; allow several GB for downloads, engines, containers, and updates.
 
-The comma client remains pinned by the `jetlink_repo` submodule at `1f0767fd3368c2894929f96e4f934b8824fc2500`. The tested Jetson server is v0.4.0. The deployed client's protocol file matched v0.4.0, and the paired drive exercised this combination. That does not establish compatibility with arbitrary future client or server updates.
+The comma client is pinned to JetLink **0.8.0**, commit `9f3d3187758b810adc99b06cc0a1a19ab73b7acb`, using **protocol v3**. Use the matching 0.8.0 Jetson server or Android app. Protocol v2 servers (including the previously tested 0.4.0 Jetson) cannot connect to this client; update both ends together.
+
+Protocol v3 keeps recurrent features on the accelerator and transfers only the scalar inputs alongside the warped images. The comma integration uses the new packed layout and preserves full raw predictions when `SEND_RAW_PRED` is enabled. Its existing queued-model catalog and small-model fallback remain in place. The USB gadget setup script is retained in the 745-SP integration because upstream 0.8.0 removed the old setup entry point.
+
+The October 3 update passed 192 isolated accelerator regression tests on the offroad comma and 107 upstream protocol/USB tests. The Jetson 0.8.0 service loaded its existing engine using TensorRT 10.16.2.10; its cache and switched-power setting were preserved. These checks do not replace a parked USB connection test, Android model benchmark/parity checks, or driving validation. The September drive results below describe the older software.
+
+To update an existing Jetson installation while preserving its settings:
+
+```sh
+jetlink update --ref v0.8.0
+```
+
+This release migrates the Jetson server from Docker to a native service. For Android, build the same pinned revision using [upstream's Android instructions](https://github.com/zoompilot/jetlink/blob/9f3d3187758b810adc99b06cc0a1a19ab73b7acb/android/README.md). A Pixel uses the app's LiteRT GPU backend; Qualcomm QNN is for Snapdragon devices.
 
 ## Repository and comma installation
 
