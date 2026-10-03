@@ -53,10 +53,12 @@ Use a separate regulated Jetson supply sized for the selected power profile, wit
 
 | Role | Repository default | Behavior |
 | --- | --- | --- |
-| Small model on the comma | **The Cool Peoples Model v3 (TCPMV3)**, October 10, 2025 | Fresh installs download and select it while parked. Existing selections are preserved. |
+| Small model on the comma | **The Cool Peoples Model v3 (TCPMV3)**, October 10, 2025 | The source checkout queues it on fresh installs. Existing selections are preserved; the current device deployment retains CD210. |
 | Large model on comma + Jetson | **Cinque Terre Model V2**, September 8, 2026 | Available through Accelerator Link; downloaded and prepared when selected. |
 
-Interrupted first-install small-model downloads retry while parked. Explicitly cancelling the download or choosing another small model stops automatic selection. The bundled model remains available during initial provisioning.
+The source checkout includes automatic first-install TCPMV3 selection; that provisioning feature is not yet part of the separate device deployment branch. Its current selected small model is CD210 Model (February 03, 2026).
+
+In the source checkout, interrupted first-install small-model downloads retry while parked. Explicitly cancelling the download or choosing another small model stops automatic selection. The bundled model remains available during initial provisioning.
 
 On October 3, V2 was downloaded and SHA-256 verified on both the comma and Jetson, and its TensorRT engine was built and loaded. The matching model hash is `09d080f36965bb2a0790500452bd328aa03c484d0222aa79d1ad9f021a522aec`. The Pixel APK is installed, but its V2 preparation remains unverified.
 
