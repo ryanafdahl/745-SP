@@ -27,8 +27,19 @@
     "upstream_patch_apply": "passed",
     "upstream_revision": "9f3d3187758b810adc99b06cc0a1a19ab73b7acb",
     "post_install_desk_runtime_check": {
-      "status": "not_run",
-      "reason": "Pixel disconnected from desktop ADB after install/hash verification; no inference frames were sent"
+      "status": "phone_runtime_and_protocol_gates_passed",
+      "evidence": "ignition-desk-check-2026-10-03.json",
+      "measured_frames": 120,
+      "warmup_frames": 20,
+      "protocol_pass": true,
+      "server_timing_pass": true,
+      "adb_round_trip_timing_pass": false,
+      "ordinary_engine_request_rejected": true,
+      "raw_inference_without_parked_request_rejected": true,
+      "initial_attempt": {
+        "status": "not_run",
+        "reason": "Pixel disconnected from desktop ADB after install/hash verification; no inference frames were sent"
+      }
     },
     "previous_803_runtime_evidence": "health-validation-2026-10-03.json"
   },
