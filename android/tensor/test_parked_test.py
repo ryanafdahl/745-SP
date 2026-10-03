@@ -2,6 +2,7 @@
 import contextlib
 import importlib.util
 import io
+import json
 from pathlib import Path
 import sys
 import tempfile
@@ -12,7 +13,7 @@ import numpy as np
 
 
 class ParkedHarnessTests(unittest.TestCase):
-    def run_harness(self, *, onroad=False, bad_peer=False, bad_output=False, close_error=False, legacy=False, release_error=False, open_error=False, connect_error=False):
+    def run_harness(self, *, onroad=False, bad_peer=False, bad_output=False, close_error=False, legacy=False, release_error=False, open_error=False, connect_error=False, bad_health=False, health_lost=False, slow=False):
         loan = types.SimpleNamespace(closed=False)
         loan.close = lambda: setattr(loan, 'closed', True)
         client = types.SimpleNamespace(closed=False)
@@ -25,7 +26,10 @@ class ParkedHarnessTests(unittest.TestCase):
         spec = types.SimpleNamespace(output_nelem=18452,warped_nbytes=12,warped_shape=(2,6,1,1),packed_nelem=4,
                                      packed_layout={'traffic_convention':(slice(0,2),None),'action_t':(slice(2,4),None)})
         client.ensure_engine = lambda *a,**kw: spec
-        client.last_timings = (100,10,110)
+        good_health={'device_health': {'sample_age_s':0.1,'thermal_status':0,'battery_c':25.0}}
+        client.state = lambda **kw: {'device_health': {'sample_age_s':0.1,'thermal_status':3,'battery_c':25.0}} if bad_health else good_health
+        client.last_state = {} if health_lost else good_health
+        client.last_timings = (110000,10,110010) if slow else (100,10,110)
         client.infer = lambda *a,**kw: np.array([np.nan] if bad_output else [0.0],dtype=np.float32)
         changes = []
         state = {'IsOffroad': not onroad, 'JetlinkEnabled': True}
@@ -52,11 +56,17 @@ class ParkedHarnessTests(unittest.TestCase):
                 self.assertEqual(changes, [])
                 return
             status=module.main()
+            if bad_health:
+                self.assertEqual(json.loads((Path(d)/'result.json').read_text())['health_at_stop']['thermal_status'],3)
             self.assertEqual(loan.closed, not legacy)
             self.assertEqual(client.closed, not release_error and not open_error)
             self.assertEqual(changes, [('JetlinkEnabled', False), ('JetlinkEnabled', True)] if legacy else [])
             self.assertTrue(state['JetlinkEnabled'])
-            self.assertEqual(status,1 if bad_peer or bad_output or close_error or release_error or open_error or connect_error else 0)
+            self.assertEqual(status,1 if bad_peer or bad_output or close_error or release_error or open_error or connect_error or bad_health or health_lost or slow else 0)
+
+    def test_initial_hot_phone_restores_enable(self): self.run_harness(legacy=True,bad_health=True)
+    def test_lost_telemetry_restores_enable(self): self.run_harness(legacy=True,health_lost=True)
+    def test_latency_stop_restores_enable(self): self.run_harness(legacy=True,slow=True)
 
     def test_ignition_on_refuses_before_borrowing(self): self.run_harness(onroad=True)
     def test_wrong_peer_releases_loan(self): self.run_harness(bad_peer=True)

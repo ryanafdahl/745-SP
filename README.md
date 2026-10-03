@@ -31,7 +31,7 @@ Software and model selection were updated on October 3, 2026. Hardware details r
 | Accelerator | NVIDIA Jetson Orin Nano Super Developer Kit, 8 GB |
 | Jetson OS | Ubuntu 24.04.4, JetPack 7.2.1 / L4T 39.2.1 |
 | JetLink server | 0.8.0, native systemd service, protocol v3 |
-| Android accelerator | Pixel 11 Pro XL, Android 17, JetLink 0.8.0-clarity-tensor.2 / version code 802 |
+| Android accelerator | Pixel 11 Pro XL, Android 17, JetLink 0.8.0-clarity-tensor.3 / version code 803 |
 | Pixel inference runtime | LiteRT GPU + Tensor TPU; V2 FP16 parity passed; Tensor restricted to explicit parked tests |
 | Inference runtime | TensorRT 10.16.2.10 |
 | Power profile | MAXN_SUPER, mode 2 |
@@ -125,9 +125,11 @@ A TensorRT or model change can require a new engine even when the ONNX download 
 
 ## Pixel setup
 
-The [Android directory](android/README.md) contains the **exact APK installed on the Pixel**, its SHA-256, build provenance, and full install steps. [Download the Tensor-capable APK](https://github.com/ryanafdahl/Clarity-Pilot/raw/refs/heads/main/android/jetlink-0.8.0-clarity-tensor.2-pixel.apk).
+The current `.3` APK adds phone thermal/charging telemetry and automatic validation stops. Its five-minute indoor check passed phone-side timing and 32-frame numerical parity; the earlier extended car USB failure remains unresolved. [Driving-test preparation and remaining gates](android/tensor/README.md#driving-test-preparation).
 
-Install with `adb install -r android/jetlink-0.8.0-clarity-tensor.2-pixel.apk`, open JetLink, and allow notifications. The installed processor is **Tensor TPU (parked test)**. Explicit FP16 compilation now passes every output slice on both 32-frame and 128-frame recurrent numerical checks; all 2,424 operators run on the TPU.
+The [Android directory](android/README.md) contains the **exact APK installed on the Pixel**, its SHA-256, build provenance, and full install steps. [Download the Tensor-capable APK](https://github.com/ryanafdahl/Clarity-Pilot/raw/refs/heads/main/android/jetlink-0.8.0-clarity-tensor.3-pixel.apk).
+
+Install with `adb install -r android/jetlink-0.8.0-clarity-tensor.3-pixel.apk`, open JetLink, and allow notifications. The installed processor is **Tensor TPU (parked test)**. Explicit FP16 compilation now passes every output slice on both 32-frame and 128-frame recurrent numerical checks; all 2,424 operators run on the TPU.
 
 Byte image history and TPU burst mode reduced short-run mean inference from **49.55 ms to 32.97 ms**. A **12,000-frame / 10-minute** desk soak returned only finite outputs: inference p95 **35.47 ms**, server-total p95 **36.72 ms**, and no server frame exceeded 50 ms. Battery temperature peaked at **34.6°C**, with Android thermal status 0 throughout.
 
