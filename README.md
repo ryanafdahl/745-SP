@@ -10,7 +10,7 @@ Clarity Pilot is a personal, experimental [sunnypilot](https://github.com/sunnyp
 
 **Storage maintenance:** the comma now keeps a 20 GiB offroad recording budget, with its newest two routes and marked recordings protected; the Jetson has bounded journal storage and hourly system-log rotation. See [retention policies, installation, and rollback](scripts/maintenance/README.md). October 3 cleanup increased comma free space from 8.9 GiB to 56 GiB.
 
-The comma handles cameras, image warp, model-output parsing, vehicle control, driver monitoring, and communication with the car. The Jetson runs TensorRT inference; the Pixel app uses LiteRT GPU inference. Either returns model outputs over the same JetLink protocol. Attach one accelerator at a time. Neither accelerator has a CAN connection.
+The comma handles cameras, image warp, model-output parsing, vehicle control, driver monitoring, and communication with the car. The Jetson runs TensorRT inference; the Pixel app offers LiteRT GPU inference and experimental Tensor TPU desk testing. Either returns model outputs over the same JetLink protocol. Attach one accelerator at a time. Neither accelerator has a CAN connection.
 
 ```text
 comma 4                                    Choose one accelerator
@@ -31,8 +31,8 @@ Software and model selection were updated on October 3, 2026. Hardware details r
 | Accelerator | NVIDIA Jetson Orin Nano Super Developer Kit, 8 GB |
 | Jetson OS | Ubuntu 24.04.4, JetPack 7.2.1 / L4T 39.2.1 |
 | JetLink server | 0.8.0, native systemd service, protocol v3 |
-| Android accelerator | Pixel 11 Pro XL, Android 17, JetLink 0.8.0 / version code 800 |
-| Pixel inference runtime | LiteRT GPU; model execution still awaiting validation |
+| Android accelerator | Pixel 11 Pro XL, Android 17, JetLink 0.8.0-clarity-tensor.1 / version code 801 |
+| Pixel inference runtime | LiteRT GPU + Tensor TPU; TPU desk-tested, V2 parity failed, Tensor USB disabled |
 | Inference runtime | TensorRT 10.16.2.10 |
 | Power profile | MAXN_SUPER, mode 2 |
 | Car power behavior | Switched with the car; suspend timer disabled |
@@ -63,7 +63,7 @@ The source checkout includes automatic first-install TCPMV3 selection; that prov
 
 In the source checkout, interrupted first-install small-model downloads retry while parked. Explicitly cancelling the download or choosing another small model stops automatic selection. The bundled model remains available during initial provisioning.
 
-On October 3, V2 was downloaded and SHA-256 verified on both the comma and Jetson, and its TensorRT engine was built and loaded. The matching model hash is `09d080f36965bb2a0790500452bd328aa03c484d0222aa79d1ad9f021a522aec`. The Pixel APK is installed, but its V2 preparation remains unverified.
+On October 3, V2 was downloaded and SHA-256 verified on both the comma and Jetson, and its TensorRT engine was built and loaded. The matching model hash is `09d080f36965bb2a0790500452bd328aa03c484d0222aa79d1ad9f021a522aec`. The Pixel now runs a compiled V2 model on its Tensor TPU, but its plan-output parity check failed; Tensor mode is restricted to desk testing.
 
 The September 26 drive used the previously selected **Cinque Terre Model, September 4, 2026**, not V2. Its model selection was preserved during the Jetson update. Most models in this repository's JetLink catalog are about 766 MB before engine preparation; allow several GB for downloads, engines, containers, and updates.
 
@@ -79,7 +79,7 @@ To update an existing Jetson installation while preserving its settings:
 jetlink update --ref v0.8.0
 ```
 
-This release migrates the Jetson server from Docker to a native service. For Android, build the same pinned revision using [upstream's Android instructions](https://github.com/zoompilot/jetlink/blob/9f3d3187758b810adc99b06cc0a1a19ab73b7acb/android/README.md). A Pixel uses the app's LiteRT GPU backend; Qualcomm QNN is for Snapdragon devices.
+This release migrates the Jetson server from Docker to a native service. For Android, build the same pinned revision using [upstream's Android instructions](https://github.com/zoompilot/jetlink/blob/9f3d3187758b810adc99b06cc0a1a19ab73b7acb/android/README.md). The patched Pixel app also supports Google Tensor TPU desk testing; Qualcomm QNN remains for Snapdragon devices.
 
 ## Repository and comma installation
 
@@ -125,11 +125,11 @@ A TensorRT or model change can require a new engine even when the ONNX download 
 
 ## Pixel setup
 
-The [Android directory](android/README.md) contains the **exact APK installed on the Pixel**, its SHA-256, build provenance, and full install steps. [Download JetLink 0.8.0 APK](https://github.com/ryanafdahl/Clarity-Pilot/raw/refs/heads/main/android/jetlink-0.8.0-pixel.apk).
+The [Android directory](android/README.md) contains the **exact APK installed on the Pixel**, its SHA-256, build provenance, and full install steps. [Download the Tensor-capable APK](https://github.com/ryanafdahl/Clarity-Pilot/raw/refs/heads/main/android/jetlink-0.8.0-clarity-tensor.1-pixel.apk).
 
-Install with `adb install -r android/jetlink-0.8.0-pixel.apk`, open JetLink, and allow notifications. Use **GPU** on the Pixel. Download **Cinque Terre Model V2** in the app before pairing. Connect through a powered USB 3 hub and accept Android's USB permission request; the comma's Accelerator Link toggle must be enabled while parked. The Jetson and Pixel are alternative accelerators, not a combined inference system.
+Install with `adb install -r android/jetlink-0.8.0-clarity-tensor.1-pixel.apk`, open JetLink, and allow notifications. The installed processor is **Tensor TPU (desk only)**. V2 ran with all 2,424 operators delegated to the TPU. Over 100 measured Wi-Fi desk frames, inference averaged **49.55 ms**, p95 **52.71 ms**; full exchange averaged **74.16 ms**. These are separate from direct USB timing.
 
-The APK built successfully, passed 51 Android unit tests, and started its native server on Pixel 11 Pro XL / Android 17. Complete model preparation, one-minute and ten-minute benchmarks, parity verification, and a parked USB test before treating it as ready for use. The older experimental Pixel APKs are not the app included here.
+**Tensor mode has USB disabled.** The 32-frame numerical comparison failed the existing plan-output tolerance, so this model is not qualified for driving. The APK passed 53 Android unit tests and the native manifest checks. GPU remains available as an explicit alternative; the comma and Jetson deployment are unchanged. See [Tensor setup, source patch, and validation details](android/tensor/README.md).
 
 ## October 3 sunnypilot sync
 

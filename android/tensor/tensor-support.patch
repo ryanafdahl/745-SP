@@ -1,0 +1,611 @@
+diff --git a/.gitignore b/.gitignore
+index 4b1e1b7..879dc74 100644
+--- a/.gitignore
++++ b/.gitignore
+@@ -30,3 +30,6 @@ dist/
+ *.certSigningRequest
+ *.mobileprovision
+ *.provisionprofile
++
++# Downloaded, hash-verified by android/scripts/fetch-tensor-runtime.py
++/android/app/src/main/jniLibs/arm64-v8a/libLiteRtDispatch_GoogleTensor.so
+diff --git a/JetlinkKit/Package.swift b/JetlinkKit/Package.swift
+index dd507ff..1fd48fb 100644
+--- a/JetlinkKit/Package.swift
++++ b/JetlinkKit/Package.swift
+@@ -48,6 +48,7 @@ let package = Package(
+     .library(name: "JetlinkLiteRT", targets: ["JetlinkLiteRT"]),
+     .library(name: "jetlink", type: .dynamic, targets: ["JetlinkAndroid"]),
+     .executable(name: "jetlink-server", targets: ["jetlink-server"]),
++    .executable(name: "tensor-convert", targets: ["TensorConvert"]),
+   ],
+   dependencies: [
+     .package(url: "https://github.com/apple/swift-crypto.git", "3.0.0"..<"5.0.0"),
+@@ -59,6 +60,7 @@ let package = Package(
+     .target(name: "JetlinkKit", dependencies: ["JetlinkLog"]),
+     .target(name: "JetlinkUI", dependencies: ["JetlinkKit"]),
+     .target(name: "JetlinkONNX", dependencies: ["JetlinkLog"]),
++    .executableTarget(name: "TensorConvert", dependencies: ["JetlinkONNX"]),
+     .target(name: "JetlinkRegistry", dependencies: ["JetlinkKit", "JetlinkLog", crypto]),
+     // onnxruntime's own iOS/macOS build, the archive its CocoaPods pod and Swift
+     // package ship: a static xcframework with device, simulator and macOS
+diff --git a/JetlinkKit/Sources/CLiteRt/include/jl_litert.h b/JetlinkKit/Sources/CLiteRt/include/jl_litert.h
+index 892e8b6..83b49f6 100644
+--- a/JetlinkKit/Sources/CLiteRt/include/jl_litert.h
++++ b/JetlinkKit/Sources/CLiteRt/include/jl_litert.h
+@@ -27,6 +27,7 @@ extern "C" {
+ enum {
+   JL_LITERT_CPU = 1,
+   JL_LITERT_GPU = 2,
++  JL_LITERT_NPU = 4,
+ };
+ 
+ typedef struct jl_litert_model jl_litert_model;
+@@ -36,6 +37,8 @@ typedef struct {
+   // The GPU alone, in fp16 (1), so an op it cannot run fails the compile
+   // rather than run on the CPU; or the CPU alone (0).
+   int gpu;
++  // AOT Tensor model, with no CPU/GPU fallback.
++  int npu;
+   // XNNPACK's pool on the CPU; 0 leaves LiteRT's default.
+   int cpu_threads;
+   // Where the GPU keeps the programs it compiled between runs, under a key
+diff --git a/JetlinkKit/Sources/CLiteRt/jl_litert.c b/JetlinkKit/Sources/CLiteRt/jl_litert.c
+index d51ae07..5c8972e 100644
+--- a/JetlinkKit/Sources/CLiteRt/jl_litert.c
++++ b/JetlinkKit/Sources/CLiteRt/jl_litert.c
+@@ -181,14 +181,13 @@ char *jl_litert_open(const char *directory) {
+   lrt.LiteRtSetMinLoggerSeverity(lrt.LiteRtGetDefaultLogger(), kLiteRtLogSeverityWarning);
+ 
+   // The GPU accelerator is a library of its own, which LiteRT opens from the
+-  // runtime library directory. The CPU and the GPU only: an NPU's dispatch
+-  // libraries are looked for otherwise, and none ship with jetlink yet.
++  // runtime directory also holds the optional Google Tensor dispatch library.
+   static char *runtime_dir;
+-  LiteRtEnvOption options[2];
++  LiteRtEnvOption options[3];
+   int n_options = 0;
+   options[n_options].tag = kLiteRtEnvOptionTagAutoRegisterAccelerators;
+   options[n_options].value.type = kLiteRtAnyTypeInt;
+-  options[n_options].value.int_value = kLiteRtHwAcceleratorCpu | kLiteRtHwAcceleratorGpu;
++  options[n_options].value.int_value = kLiteRtHwAcceleratorCpu | kLiteRtHwAcceleratorGpu | kLiteRtHwAcceleratorNpu;
+   n_options++;
+   if (named) {
+     // kept for the life of the process, as the environment is
+@@ -197,6 +196,10 @@ char *jl_litert_open(const char *directory) {
+     options[n_options].value.type = kLiteRtAnyTypeString;
+     options[n_options].value.str_value = runtime_dir;
+     n_options++;
++    options[n_options].tag = kLiteRtEnvOptionTagDispatchLibraryDir;
++    options[n_options].value.type = kLiteRtAnyTypeString;
++    options[n_options].value.str_value = runtime_dir;
++    n_options++;
+   }
+   char *error = take(lrt.LiteRtCreateEnvironment(n_options, options, &environment), "LiteRtCreateEnvironment");
+   if (error != NULL) {
+@@ -391,7 +394,7 @@ static char *compile(jl_litert_model *m, const char *path, const jl_litert_optio
+     return error;
+   }
+   TRY(LiteRtCreateOptions, &m->options);
+-  TRY(LiteRtSetOptionsHardwareAccelerators, m->options, o->gpu ? kLiteRtHwAcceleratorGpu : kLiteRtHwAcceleratorCpu);
++  TRY(LiteRtSetOptionsHardwareAccelerators, m->options, o->npu ? kLiteRtHwAcceleratorNpu : (o->gpu ? kLiteRtHwAcceleratorGpu : kLiteRtHwAcceleratorCpu));
+   if (o->gpu) {
+     // LrtGetGpuOptionsIdentifier()
+     error = add_toml(m->options, "gpu_options", gpu_toml(o));
+diff --git a/JetlinkKit/Sources/JetlinkAndroid/Bridge.swift b/JetlinkKit/Sources/JetlinkAndroid/Bridge.swift
+index 9b65a90..64699e4 100644
+--- a/JetlinkKit/Sources/JetlinkAndroid/Bridge.swift
++++ b/JetlinkKit/Sources/JetlinkAndroid/Bridge.swift
+@@ -218,7 +218,8 @@
+           throw HostFailure("LiteRT has no device \(device ?? "")")
+         }
+         let libraries = (config["native_library_dir"] as? String).flatMap { $0.isEmpty ? nil : URL(fileURLWithPath: $0, isDirectory: true) }
+-        let backend = LiteRtBackend(profile: profile, preparer: ONNXPreparer(), libraries: libraries, chip: chip)
++        let tensorModels = (config["tensor_models_dir"] as? String).map { URL(fileURLWithPath: $0, isDirectory: true) }
++        let backend = LiteRtBackend(profile: profile, preparer: ONNXPreparer(), libraries: libraries, chip: chip, tensorModels: tensorModels)
+         // libLiteRt.so and its GPU accelerator, from the app's own libraries:
+         // a phone LiteRT cannot run on says so now, not at the first build.
+         try backend.open()
+diff --git a/JetlinkKit/Sources/JetlinkLiteRT/LiteRt.swift b/JetlinkKit/Sources/JetlinkLiteRT/LiteRt.swift
+index 524022b..6538a27 100644
+--- a/JetlinkKit/Sources/JetlinkLiteRT/LiteRt.swift
++++ b/JetlinkKit/Sources/JetlinkLiteRT/LiteRt.swift
+@@ -39,6 +39,13 @@ public enum LiteRtRuntime {
+     return (hardware & Int32(JL_LITERT_GPU) != 0, text)
+   }
+ 
++  public static func hasNpu() throws -> Bool {
++    var hardware: Int32 = 0
++    var names = [CChar](repeating: 0, count: 256)
++    try LiteRtError.check(jl_litert_accelerators(&hardware, &names, names.count))
++    return hardware & Int32(JL_LITERT_NPU) != 0
++  }
++
+   #if os(Android)
+     /// The names LiteRT's GPU accelerator looks for the vendor's OpenCL
+     /// under, which the app's manifest declares.
+@@ -78,6 +85,7 @@ enum LiteRtCompileOptions: Sendable {
+   case gpu(cache: (directory: URL, key: String)?)
+   /// XNNPACK on the CPU, with a pool of `threads`.
+   case cpu(threads: Int)
++  case tensor
+ }
+ 
+ /// One compiled model: a .tflite, compiled for an accelerator, and the
+@@ -95,6 +103,8 @@ final class LiteRtModel: @unchecked Sendable {
+     case .gpu(let programs):
+       shim.gpu = 1
+       cache = programs
++    case .tensor:
++      shim.npu = 1
+     case .cpu(let threads):
+       shim.cpu_threads = Int32(threads)
+     }
+diff --git a/JetlinkKit/Sources/JetlinkLiteRT/LiteRtBackend.swift b/JetlinkKit/Sources/JetlinkLiteRT/LiteRtBackend.swift
+index 7c17f79..6fc454f 100644
+--- a/JetlinkKit/Sources/JetlinkLiteRT/LiteRtBackend.swift
++++ b/JetlinkKit/Sources/JetlinkLiteRT/LiteRtBackend.swift
+@@ -15,10 +15,13 @@ public enum LiteRtProfile: String, CaseIterable, Sendable {
+   /// XNNPACK on the CPU: for tests, the emulator, and phones LiteRT drives no
+   /// GPU on. Nowhere near the frame budget with a real model.
+   case cpu
++  /// Google Tensor TPU, using a workstation-compiled model.
++  case tensor
+ 
+   /// What the log and the benchmark's report call it.
+   var label: String {
+     switch self {
++    case .tensor: "Tensor TPU (AOT, desk only)"
+     case .gpu: "GPU(fp16)"
+     case .cpu: "CPU(\(HostChip.cpuThreads) threads)"
+     }
+@@ -28,6 +31,7 @@ public enum LiteRtProfile: String, CaseIterable, Sendable {
+   /// `cache` when there is one.
+   func options(cache: (directory: URL, key: String)? = nil) -> LiteRtCompileOptions {
+     switch self {
++    case .tensor: .tensor
+     case .gpu: .gpu(cache: cache)
+     case .cpu: .cpu(threads: HostChip.cpuThreads)
+     }
+@@ -38,8 +42,8 @@ public enum LiteRtProfile: String, CaseIterable, Sendable {
+ /// onnxruntime's QNN does not drive. The artifact is a directory holding the
+ /// converted model and the GPU's compile cache (LiteRtArtifact).
+ ///
+-/// Nothing here has run on a phone yet: the GPU path is Metal's on a Mac,
+-/// and Android's OpenCL one follows LiteRT 2.2.0's documentation and source.
++/// Tensor AOT execution is desk-tested on Pixel 11 Pro XL; numerical and
++/// timing qualification must be recorded separately for each compiled model.
+ public final class LiteRtBackend: EngineBackend {
+   /// A first GPU compile with no earlier build to go by: 7 to 12 s for
+   /// Cinque Terre V3 on an M1 Pro's Metal; a phone's OpenCL compile is
+@@ -58,6 +62,7 @@ public final class LiteRtBackend: EngineBackend {
+   public let libraries: URL?
+   private let preparer: any ModelPreparer
+   private let chip: String
++  private let tensorModels: URL?
+   private let log = ServerLog(category: "litert")
+ 
+   /// `libraries` is the directory holding libLiteRt and its GPU
+@@ -65,7 +70,8 @@ public final class LiteRtBackend: EngineBackend {
+   /// $JETLINK_LITERT_DIR. `chip` names what the artifacts are valid for: on
+   /// Android the SoC's model, "Tensor G5" (Build.SOC_MODEL), which a GPU's
+   /// compiled programs are for; nil is HostChip's name for this machine.
+-  public init(profile: LiteRtProfile, preparer: any ModelPreparer, libraries: URL? = nil, chip: String? = nil) {
++  public init(profile: LiteRtProfile, preparer: any ModelPreparer, libraries: URL? = nil, chip: String? = nil, tensorModels: URL? = nil) {
++    self.tensorModels = tensorModels
+     self.profile = profile
+     self.preparer = preparer
+     self.libraries = libraries
+@@ -88,6 +94,14 @@ public final class LiteRtBackend: EngineBackend {
+   /// after converting a model.
+   public func open() throws {
+     try LiteRtRuntime.load(directory: libraries)
++    if profile == .tensor {
++      guard ["Tensor G5", "Tensor G6"].contains(chip) else {
++        throw LiteRtError("Tensor TPU requires a supported Google Tensor G5 or G6 device")
++      }
++      guard try LiteRtRuntime.hasNpu() else {
++        throw LiteRtError("Google Tensor dispatch did not load; Tensor TPU is unavailable")
++      }
++    }
+     if profile == .gpu {
+       let (gpu, names) = try LiteRtRuntime.accelerators()
+       guard gpu else {
+@@ -131,6 +145,10 @@ public final class LiteRtBackend: EngineBackend {
+         "LiteRT could not compile the model for the GPU on \(chip) (\(error.description)); LiteRT's log names any op the GPU cannot run, "
+           + "and the CPU profile runs every op")
+     }
++    if profile == .tensor && !engine.fullyAccelerated {
++      engine.close()
++      throw LiteRtError("Tensor TPU did not accelerate the whole model; CPU fallback is not accepted")
++    }
+     if profile == .gpu && !engine.fullyAccelerated {
+       engine.close()
+       throw LiteRtError("LiteRT's GPU on \(chip) cannot run every op of this model; LiteRT's log names them, and the CPU profile runs every op")
+@@ -141,6 +159,10 @@ public final class LiteRtBackend: EngineBackend {
+   // MARK: build
+ 
+   public func build(model: URL, artifact: URL, report: @escaping ProgressFn, metaExtra: [String: Any]) throws {
++    if profile == .tensor {
++      try buildTensor(model: model, artifact: artifact, report: report, metaExtra: metaExtra)
++      return
++    }
+     let started = Date()
+     let expect = Artifact.sidecar(artifact)
+     try Artifact.build(artifact, metaExtra: metaExtra, report: report) { staged in
+@@ -182,10 +204,52 @@ public final class LiteRtBackend: EngineBackend {
+     }
+   }
+ 
++  private func buildTensor(model: URL, artifact: URL, report: @escaping ProgressFn, metaExtra: [String: Any]) throws {
++    guard let tensorModels else { throw LiteRtError("Tensor model directory is not configured") }
++    let (sourceHash, _) = try Registry.hashFile(model)
++    let folder = tensorModels
++    let manifestURL = folder.appending(path: sourceHash + ".json")
++    guard let data = try? Data(contentsOf: manifestURL) else {
++      throw LiteRtError("Compile this model for \(chip) with the Tensor SDK and import \(sourceHash).tflite and \(sourceHash).json into tensor-models. See the Tensor setup guide.")
++    }
++    let manifest = try TensorManifest.read(data, source: sourceHash, chip: chip)
++    let compiledHash = manifest.compiledSHA256
++    let started = Date()
++    try Artifact.build(artifact, metaExtra: metaExtra, report: report) { staged in
++      try FileManager.default.createDirectory(at: staged, withIntermediateDirectories: true)
++      let destination = staged.appending(path: LiteRtArtifact.model)
++      try FileManager.default.copyItem(at: folder.appending(path: sourceHash + ".tflite"), to: destination)
++      guard try Registry.hashFile(destination).0 == compiledHash else {
++        throw LiteRtError("Compiled Tensor model checksum mismatch")
++      }
++      report("compile", 0, "loading the compiled Tensor TPU model")
++      try self.engine(staged, cacheKey: LiteRtArtifact.cacheKey(artifact)).close()
++      var result = LiteRtArtifact.meta(self, model: model, started: started)
++      result["tensor_source_sha256"] = sourceHash
++      result["tensor_compiled_sha256"] = compiledHash
++      result["tensor_soc"] = manifest.soc
++      return result
++    }
++  }
++
+   // MARK: load
+ 
+   public func load(artifact: URL, report: @escaping ProgressFn) throws -> any Engine {
+     let meta = try LiteRtArtifact.open(artifact)
++    if profile == .tensor {
++      guard let source = meta["tensor_source_sha256"] as? String,
++            let compiled = meta["tensor_compiled_sha256"] as? String,
++            meta["tensor_soc"] as? String == chip.replacingOccurrences(of: " ", with: "_"),
++            meta["litert"] as? String == LiteRtRuntime.version else {
++        throw ArtifactInvalid("Tensor artifact identity is missing or incompatible; rebuilding")
++      }
++      if let tensorModels, let data = try? Data(contentsOf: tensorModels.appending(path: source + ".json")) {
++        let manifest = try TensorManifest.read(data, source: source, chip: chip)
++        if manifest.compiledSHA256 != compiled {
++          throw ArtifactInvalid("The imported Tensor model changed; rebuilding")
++        }
++      }
++    }
+     let (engine, seconds) = try Artifact.load(artifact, meta: meta, what: "the model", report: report) {
+       try self.engine(artifact, cacheKey: LiteRtArtifact.cacheKey(artifact))
+     }
+diff --git a/JetlinkKit/Sources/JetlinkLiteRT/LiteRtEngine.swift b/JetlinkKit/Sources/JetlinkLiteRT/LiteRtEngine.swift
+index a15a1d8..dc27fff 100644
+--- a/JetlinkKit/Sources/JetlinkLiteRT/LiteRtEngine.swift
++++ b/JetlinkKit/Sources/JetlinkLiteRT/LiteRtEngine.swift
+@@ -25,7 +25,7 @@ public final class LiteRtEngine: EngineCore, @unchecked Sendable {
+   public let fullyAccelerated: Bool
+   /// Whether the looped state stays in the accelerator's memory.
+   public var stateOnDevice: Bool { !deviceState.isEmpty }
+-  public override var notes: String { stateOnDevice ? "state on the GPU" : "" }
++  public override var notes: String { stateOnDevice ? "state on the accelerator" : "" }
+ 
+   private var model: LiteRtModel?
+   /// Every buffer a run reads or writes, alive as long as the sets below.
+diff --git a/JetlinkKit/Sources/JetlinkLiteRT/TensorManifest.swift b/JetlinkKit/Sources/JetlinkLiteRT/TensorManifest.swift
+new file mode 100644
+index 0000000..7205dd0
+--- /dev/null
++++ b/JetlinkKit/Sources/JetlinkLiteRT/TensorManifest.swift
+@@ -0,0 +1,28 @@
++import Foundation
++
++/// Identity checks for a model compiled off-device; never accept another model,
++/// chip generation, or runtime just because its filename looks right.
++struct TensorManifest: Decodable {
++  let sourceSHA256: String
++  let compiledSHA256: String
++  let soc: String
++  let litert: String
++
++  enum CodingKeys: String, CodingKey {
++    case sourceSHA256 = "source_sha256", compiledSHA256 = "compiled_sha256", soc, litert
++  }
++
++  static func read(_ data: Data, source: String, chip: String) throws -> TensorManifest {
++    let manifest = try JSONDecoder().decode(Self.self, from: data)
++    guard manifest.sourceSHA256 == source else { throw LiteRtError("Tensor model source checksum mismatch") }
++    guard manifest.soc == chip.replacingOccurrences(of: " ", with: "_") else {
++      throw LiteRtError("Tensor model was compiled for another chipset")
++    }
++    guard manifest.litert == LiteRtRuntime.version else { throw LiteRtError("Tensor model runtime version mismatch") }
++    guard manifest.compiledSHA256.count == 64,
++          manifest.compiledSHA256.allSatisfy({ "0123456789abcdef".contains($0) }) else {
++      throw LiteRtError("Tensor model has an invalid compiled checksum")
++    }
++    return manifest
++  }
++}
+diff --git a/JetlinkKit/Sources/TensorConvert/main.swift b/JetlinkKit/Sources/TensorConvert/main.swift
+new file mode 100644
+index 0000000..45f8376
+--- /dev/null
++++ b/JetlinkKit/Sources/TensorConvert/main.swift
+@@ -0,0 +1,10 @@
++import Foundation
++import JetlinkONNX
++
++guard CommandLine.arguments.count == 3 else {
++  fatalError("usage: tensor-convert SOURCE.onnx OUTPUT_DIRECTORY")
++}
++let output = URL(fileURLWithPath: CommandLine.arguments[2], isDirectory: true)
++try FileManager.default.createDirectory(at: output, withIntermediateDirectories: true)
++let report = try LiteRTPreparation.prepare(source: URL(fileURLWithPath: CommandLine.arguments[1]), into: output)
++print(report.summary)
+diff --git a/JetlinkKit/Tests/JetlinkServerTests/TensorManifestTests.swift b/JetlinkKit/Tests/JetlinkServerTests/TensorManifestTests.swift
+new file mode 100644
+index 0000000..455c12e
+--- /dev/null
++++ b/JetlinkKit/Tests/JetlinkServerTests/TensorManifestTests.swift
+@@ -0,0 +1,24 @@
++import Foundation
++import Testing
++@testable import JetlinkLiteRT
++
++struct TensorManifestTests {
++  let source = String(repeating: "a", count: 64)
++  func data(_ changes: [String: String] = [:]) throws -> Data {
++    var manifest = ["source_sha256": source, "compiled_sha256": String(repeating: "b", count: 64),
++                    "soc": "Tensor_G6", "litert": "2.2.0"]
++    manifest.merge(changes) { _, new in new }
++    return try JSONSerialization.data(withJSONObject: manifest)
++  }
++  @Test func acceptsMatchingModel() throws {
++    #expect(try TensorManifest.read(data(), source: source, chip: "Tensor G6").soc == "Tensor_G6")
++  }
++  @Test(arguments: ["source_sha256", "compiled_sha256", "soc", "litert"])
++  func rejectsMismatch(_ key: String) throws {
++    let invalid = try data([key: "wrong"])
++    #expect(throws: (any Error).self) { try TensorManifest.read(invalid, source: source, chip: "Tensor G6") }
++  }
++  @Test func rejectsMissingManifestFields() {
++    #expect(throws: (any Error).self) { try TensorManifest.read(Data("{}".utf8), source: source, chip: "Tensor G6") }
++  }
++}
+diff --git a/android/app/build.gradle.kts b/android/app/build.gradle.kts
+index 7ce555e..265a773 100644
+--- a/android/app/build.gradle.kts
++++ b/android/app/build.gradle.kts
+@@ -30,8 +30,8 @@ android {
+         // Android 12: Build.SOC_MODEL and the performance hint API.
+         minSdk = 31
+         targetSdk = 36
+-        versionCode = jetlinkVersionCode
+-        versionName = jetlinkVersion
++        versionCode = jetlinkVersionCode + 1
++        versionName = jetlinkVersion + "-clarity-tensor.1"
+         // The QNN runtime is arm64 only, and so is every Snapdragon with an NPU
+         // worth driving on. The emulator on an Apple silicon Mac is arm64 too.
+         ndk { abiFilters += "arm64-v8a" }
+@@ -187,3 +187,12 @@ androidComponents {
+         variant.sources.jniLibs?.addGeneratedSourceDirectory(liteRtLibraries, LiteRtLibraries::outputDir)
+     }
+ }
++
++// The SDK compiler stays on the workstation. Only the pinned open-source
++// Tensor dispatch library ships in the app.
++val tensorDispatch = tasks.register<Exec>("tensorDispatch") {
++    commandLine("python3", rootDir.resolve("scripts/fetch-tensor-runtime.py"))
++    inputs.file(rootDir.resolve("scripts/fetch-tensor-runtime.py"))
++    outputs.file(project.file("src/main/jniLibs/arm64-v8a/libLiteRtDispatch_GoogleTensor.so"))
++}
++tasks.named("preBuild") { dependsOn(tensorDispatch) }
+diff --git a/android/app/src/main/AndroidManifest.xml b/android/app/src/main/AndroidManifest.xml
+index 31bd65a..4c06831 100644
+--- a/android/app/src/main/AndroidManifest.xml
++++ b/android/app/src/main/AndroidManifest.xml
+@@ -28,6 +28,7 @@
+ 
+         <!-- The FastRPC library the QNN provider reaches the NPU through. -->
+         <uses-native-library android:name="libcdsprpc.so" android:required="false" />
++        <uses-native-library android:name="libedgetpu_litert.so" android:required="false" />
+         <!-- The vendor OpenCL LiteRT's GPU accelerator loads, which an app
+              targeting Android 12 or later must declare. The LiteRT AAR's own
+              manifest declares these, but only its libraries are packaged
+diff --git a/android/app/src/main/java/io/zoompilot/jetlink/server/ServerController.kt b/android/app/src/main/java/io/zoompilot/jetlink/server/ServerController.kt
+index 4329e68..8fc99cd 100644
+--- a/android/app/src/main/java/io/zoompilot/jetlink/server/ServerController.kt
++++ b/android/app/src/main/java/io/zoompilot/jetlink/server/ServerController.kt
+@@ -90,10 +90,11 @@ class ServerController(private val context: Context, private val scope: Coroutin
+         put("port", settings.port)
+         // bench tools reach the server over Wi-Fi or `adb forward`
+         put("listen", true)
+-        put("usb", true)
++        put("usb", settings.processor.allowsUsb)
+         put("preload", true)
+         put("chip", Chip.model)
+         put("native_library_dir", context.applicationInfo.nativeLibraryDir)
++        context.getExternalFilesDir("tensor-models")?.let { put("tensor_models_dir", it.absolutePath) }
+     }
+ 
+     /** Follows the snapshot and the log for as long as the app runs. */
+diff --git a/android/app/src/main/java/io/zoompilot/jetlink/settings/Chip.kt b/android/app/src/main/java/io/zoompilot/jetlink/settings/Chip.kt
+index a3fac56..ebc03f7 100644
+--- a/android/app/src/main/java/io/zoompilot/jetlink/settings/Chip.kt
++++ b/android/app/src/main/java/io/zoompilot/jetlink/settings/Chip.kt
+@@ -18,7 +18,10 @@ object Chip {
+         get() = manufacturer.equals("QTI", ignoreCase = true) || manufacturer.equals("Qualcomm", ignoreCase = true)
+ 
+     /** What this phone's Settings offer. */
+-    fun processors(current: Processor): List<Processor> = Processor.choices(isQualcomm, isEmulator, current)
++    fun processors(current: Processor): List<Processor> = Processor.choices(isQualcomm, isEmulator, current, isTensor)
++
++    val isTensor: Boolean
++        get() = manufacturer.equals("Google", ignoreCase = true) && model in setOf("Tensor G5", "Tensor G6")
+ 
+     val isEmulator: Boolean
+         get() = Build.HARDWARE.contains("ranchu") || Build.HARDWARE.contains("goldfish") || Build.PRODUCT.contains("sdk")
+diff --git a/android/app/src/main/java/io/zoompilot/jetlink/settings/Settings.kt b/android/app/src/main/java/io/zoompilot/jetlink/settings/Settings.kt
+index 9ddb197..3585e5a 100644
+--- a/android/app/src/main/java/io/zoompilot/jetlink/settings/Settings.kt
++++ b/android/app/src/main/java/io/zoompilot/jetlink/settings/Settings.kt
+@@ -27,10 +27,15 @@ enum class Processor(val backend: Backend, val device: String, val title: String
+     /** The whole model on the GPU through LiteRT, which drives any phone's: Adreno, Mali, PowerVR. */
+     Gpu(Backend.LiteRt, "gpu", "GPU"),
+ 
++    Tensor(Backend.LiteRt, "tensor", "Tensor TPU (desk only)"),
++
+     /** The CPU: the emulator and tests. Seconds a frame with a real model. */
+     Cpu(Backend.Ort, "cpu", "CPU");
+ 
+     /** Runs on QNN, which needs a Snapdragon: onnxruntime anywhere but its CPU. */
++    /** Tensor is desk-only until numerical and timing qualification passes. */
++    val allowsUsb: Boolean get() = this != Tensor
++
+     val usesQnn: Boolean get() = backend == Backend.Ort && device != Cpu.device
+ 
+     companion object {
+@@ -48,9 +53,10 @@ enum class Processor(val backend: Backend, val device: String, val title: String
+          * offered on a Snapdragon only once chosen; the emulator offers
+          * everything, for testing.
+          */
+-        fun choices(qualcomm: Boolean, emulator: Boolean, current: Processor): List<Processor> = when {
++        fun choices(qualcomm: Boolean, emulator: Boolean, current: Processor, tensor: Boolean = false): List<Processor> = when {
+             emulator -> entries
+-            qualcomm -> entries.filter { it != Cpu || current == Cpu }
++            qualcomm -> entries.filter { it != Tensor && (it != Cpu || current == Cpu) }
++            tensor -> listOf(Tensor, Gpu, Cpu)
+             else -> listOf(Gpu, Cpu)
+         }
+     }
+@@ -93,7 +99,7 @@ class Settings(context: Context) {
+             port = if (port in 1..65535) port else defaults.port,
+             // a QNN choice from before a phone without a Snapdragon was told apart
+             processor = Processor.of(prefs.getString(PROCESSOR, null))
+-                ?.takeIf { it in Processor.choices(Chip.isQualcomm, Chip.isEmulator, it) }
++                ?.takeIf { it in Processor.choices(Chip.isQualcomm, Chip.isEmulator, it, Chip.isTensor) }
+                 ?: defaults.processor,
+             keepNpuAwake = prefs.getBoolean(KEEP_NPU_AWAKE, defaults.keepNpuAwake),
+             keepCpuAwake = prefs.getBoolean(KEEP_CPU_AWAKE, defaults.keepCpuAwake),
+diff --git a/android/app/src/main/java/io/zoompilot/jetlink/ui/settings/SettingsScreen.kt b/android/app/src/main/java/io/zoompilot/jetlink/ui/settings/SettingsScreen.kt
+index f065256..e028a3a 100644
+--- a/android/app/src/main/java/io/zoompilot/jetlink/ui/settings/SettingsScreen.kt
++++ b/android/app/src/main/java/io/zoompilot/jetlink/ui/settings/SettingsScreen.kt
+@@ -241,7 +241,9 @@ private fun Performance(values: SettingsValues, info: SettingsInfo, actions: Set
+     val colors = JetlinkTheme.colors
+     var choosing by remember { mutableStateOf(false) }
+     val choices = info.processors
+-    val footer = if (info.snapdragon) {
++    val footer = if (Processor.Tensor in choices) {
++        "Tensor TPU is for desk testing. USB is disabled until output parity and timing are qualified."
++    } else if (info.snapdragon) {
+         "Changing the processor prepares models again."
+     } else {
+         "This phone has no Snapdragon NPU, so the model runs on its GPU. Run Benchmark to see whether it keeps up."
+diff --git a/android/app/src/test/java/io/zoompilot/jetlink/settings/ProcessorTest.kt b/android/app/src/test/java/io/zoompilot/jetlink/settings/ProcessorTest.kt
+index 6fcd24f..beed83a 100644
+--- a/android/app/src/test/java/io/zoompilot/jetlink/settings/ProcessorTest.kt
++++ b/android/app/src/test/java/io/zoompilot/jetlink/settings/ProcessorTest.kt
+@@ -9,7 +9,7 @@ class ProcessorTest {
+     fun aSnapdragonOffersQnn() {
+         assertEquals(listOf(Processor.NpuGpu, Processor.Npu, Processor.Gpu), Processor.choices(qualcomm = true, emulator = false, current = Processor.NpuGpu))
+         // the CPU once chosen, so it can be chosen away from
+-        assertEquals(Processor.entries, Processor.choices(qualcomm = true, emulator = false, current = Processor.Cpu))
++        assertEquals(Processor.entries.filter { it != Processor.Tensor }, Processor.choices(qualcomm = true, emulator = false, current = Processor.Cpu))
+     }
+ 
+     @Test
+@@ -29,7 +29,21 @@ class ProcessorTest {
+     @Test
+     fun onlyOnnxruntimesNpuAndGpuChoicesNeedQnn() {
+         assertEquals(listOf(Processor.NpuGpu, Processor.Npu), Processor.entries.filter { it.usesQnn })
+-        assertEquals(listOf(Backend.Ort, Backend.Ort, Backend.LiteRt, Backend.Ort), Processor.entries.map { it.backend })
++        assertEquals(listOf(Backend.Ort, Backend.Ort, Backend.LiteRt, Backend.LiteRt, Backend.Ort), Processor.entries.map { it.backend })
++    }
++
++    @Test
++    fun tensorOffersItsOwnTpuWithoutQnn() {
++        assertEquals(listOf(Processor.Tensor, Processor.Gpu, Processor.Cpu),
++            Processor.choices(false, false, Processor.Gpu, tensor = true))
++        assertEquals(Processor.Tensor, Processor.of("tensor"))
++        assertEquals(false, Processor.Tensor.usesQnn)
++    }
++
++    @Test
++    fun onlyExperimentalTensorDisablesUsb() {
++        assertEquals(false, Processor.Tensor.allowsUsb)
++        assertEquals(true, Processor.entries.filter { it != Processor.Tensor }.all { it.allowsUsb })
+     }
+ 
+     @Test
+diff --git a/android/scripts/compile-tensor.py b/android/scripts/compile-tensor.py
+new file mode 100644
+index 0000000..e9cac49
+--- /dev/null
++++ b/android/scripts/compile-tensor.py
+@@ -0,0 +1,36 @@
++import argparse, hashlib, json, os, pathlib
++
++def sha(path):
++    with open(path, 'rb') as stream:
++        return hashlib.file_digest(stream, 'sha256').hexdigest()
++
++p = argparse.ArgumentParser(description='Compile an app-converted model for Google Tensor; SDK stays local.')
++p.add_argument('--model', type=pathlib.Path, required=True)
++p.add_argument('--source', type=pathlib.Path, required=True, help='Original ONNX model')
++p.add_argument('--sdk', type=pathlib.Path, required=True, help='Directory containing liblitert_plugin_compiler.so')
++p.add_argument('--output', type=pathlib.Path, required=True)
++p.add_argument('--soc', choices=['Tensor_G5', 'Tensor_G6'], default='Tensor_G6')
++p.add_argument('--precision', choices=['auto', 'half', 'bfloat16', 'no_truncation'], default='half')
++p.add_argument('--sharding', choices=['minimal', 'moderate', 'extensive', 'maximum'], default='minimal')
++a = p.parse_args()
++if not (a.sdk / 'liblitert_plugin_compiler.so').is_file():
++    p.error('SDK compiler library missing')
++os.environ['GOOGLE_TENSOR_COMPILER_LIB'] = str(a.sdk.resolve())
++os.environ['GOOGLE_TENSOR_BACKEND_ENABLED'] = '1'
++from ai_edge_litert.aot.aot_compile import aot_compile
++from ai_edge_litert.aot.vendors.google_tensor.target import Target, SocModel
++import importlib.metadata
++if importlib.metadata.version('ai-edge-litert') != '2.2.0':
++    p.error('Use ai-edge-litert==2.2.0')
++source_hash = sha(a.source)
++out = a.output / source_hash
++out.mkdir(parents=True, exist_ok=True)
++result = aot_compile(str(a.model), output_dir=str(out / 'work'), target=Target(SocModel(a.soc)), keep_going=False, google_tensor_truncation_type=a.precision, google_tensor_sharding_intensity=a.sharding)
++print(result.compilation_report(), flush=True)
++if result.failed_backends or len(result.models) != 1:
++    raise RuntimeError('Tensor compilation did not produce exactly one model')
++compiled = out / 'model.tflite'
++result.models[0].save(compiled, export_only=True)
++manifest = {'source_sha256': source_hash, 'compiled_sha256': sha(compiled), 'soc': a.soc, 'litert': '2.2.0', 'sdk_sha256': sha(a.sdk / 'liblitert_plugin_compiler.so'), 'precision': a.precision, 'sharding': a.sharding}
++(out / 'manifest.json').write_text(json.dumps(manifest, indent=2) + '\n')
++print(out, flush=True)
+diff --git a/android/scripts/fetch-tensor-runtime.py b/android/scripts/fetch-tensor-runtime.py
+new file mode 100644
+index 0000000..0d438f7
+--- /dev/null
++++ b/android/scripts/fetch-tensor-runtime.py
+@@ -0,0 +1,16 @@
++#!/usr/bin/env python3
++"""Fetch the official LiteRT 2.2.0 Tensor dispatch library, verifying its hash."""
++import hashlib, io, pathlib, urllib.request, zipfile
++url = 'https://github.com/google-ai-edge/LiteRT/releases/download/v2.2.0/litert_npu_runtime_libraries.zip'
++member = 'google_tensor_runtime/src/main/jni/arm64-v8a/libLiteRtDispatch_GoogleTensor.so'
++expected = '35b59265eb8595a1d28c2f69693b1cad39d1fa4a38c2c18d5d54550d079264ac'
++out = pathlib.Path(__file__).resolve().parents[1] / 'app/src/main/jniLibs/arm64-v8a/libLiteRtDispatch_GoogleTensor.so'
++if not out.exists() or hashlib.sha256(out.read_bytes()).hexdigest() != expected:
++    with urllib.request.urlopen(url, timeout=120) as response:
++        archive = zipfile.ZipFile(io.BytesIO(response.read()))
++    data = archive.read(member)
++    if hashlib.sha256(data).hexdigest() != expected:
++        raise RuntimeError('Tensor runtime checksum mismatch')
++    out.parent.mkdir(parents=True, exist_ok=True)
++    out.write_bytes(data)
++print(out)

@@ -1,0 +1,31 @@
+{
+  "backend": "litert",
+  "device": "tensor-Tensor_G6",
+  "transport": "desk Wi-Fi TCP",
+  "warmup_frames": 10,
+  "measured_frames": 100,
+  "round_trip": {
+    "mean_ms": 74.15598997999723,
+    "p95_ms": 81.99043899999197,
+    "max_ms": 104.06191500010209,
+    "over_50ms": 100
+  },
+  "inference": {
+    "mean_ms": 49.553689999999996,
+    "p95_ms": 52.7069,
+    "max_ms": 53.545,
+    "over_50ms": 60
+  },
+  "queues": {
+    "mean_ms": 3.86446,
+    "p95_ms": 5.026599999999999,
+    "max_ms": 5.95,
+    "over_50ms": 0
+  },
+  "server_total": {
+    "mean_ms": 53.49203000000001,
+    "p95_ms": 57.3766,
+    "max_ms": 58.437,
+    "over_50ms": 84
+  }
+}
