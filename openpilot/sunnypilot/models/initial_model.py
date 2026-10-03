@@ -1,4 +1,4 @@
-"""745-SP's first-install selection, separate from the bundled emergency model."""
+"""Clarity Pilot's first-install selection, separate from the bundled emergency model."""
 
 INITIAL_SMALL_MODEL = "The Cool Peoples Model v3 (October 10, 2025)"
 INITIAL_SMALL_MODEL_REF = "5eb912c025a2207c7d428deee74ded49e5905527"

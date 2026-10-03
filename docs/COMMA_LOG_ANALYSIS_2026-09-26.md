@@ -8,7 +8,7 @@ Collected over SSH at approximately 20:58 UTC (13:58 PDT), with the car off and 
 
 Downloaded 65 qlogs from the latest two completed routes (29 and 36 segments), plus 162 recent application log files. Private archives and analysis output remain under ignored `diagnostics/2026-09-26-offroad/`; raw routes, addresses, and device identifiers are not committed.
 
-Both routes identify deployed commit `d57c4b533558bb2314f542a2ea78c3271b265eda`, branch `745-SP`, from the device's `ryanafdahl/openpilot` origin. This differs from this checkout's starting commit `66243ad71814fe296524587bd43d046561748ac0` in `ryanafdahl/745-SP`. These measurements validate the observed deployment, not the current checkout or a new release.
+Both routes identify deployed commit `d57c4b533558bb2314f542a2ea78c3271b265eda`, on the device deployment branch, from the device's `ryanafdahl/openpilot` origin. This differs from this checkout's starting commit `66243ad71814fe296524587bd43d046561748ac0` in `ryanafdahl/Clarity-Pilot`. These measurements validate the observed deployment, not the current checkout or a new release.
 
 ## Latest two drives
 

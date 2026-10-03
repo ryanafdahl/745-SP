@@ -1,4 +1,4 @@
-"""Protocol v3 integration contracts shared by both 745-SP deployments."""
+"""Protocol v3 integration contracts shared by both Clarity Pilot deployments."""
 import unittest
 from unittest import mock
 
